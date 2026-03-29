@@ -45,9 +45,52 @@ interface PurchasedBundle {
   duration: number;
 }
 
+interface Activity {
+  id: string;
+  action: string;
+  category: string;
+  description: string;
+  status: 'success' | 'failed' | 'pending' | 'warning';
+  timestamp: Date;
+}
+
+interface BillingData {
+  totalInvoices: number;
+  totalAmountSpent: number;
+  invoices: Array<{
+    id: string;
+    planName: string;
+    amount: number;
+    status: string;
+    purchaseDate: Date;
+  }>;
+}
+
+interface ConnectionMetrics {
+  isConnected: boolean;
+  metrics: {
+    downloadSpeed: number;
+    uploadSpeed: number;
+    latency: number;
+    signalStrength: number;
+    connectionQuality: string;
+    timestamp: Date;
+  };
+  status: string;
+}
+
+interface ActivityStats {
+  successfulActionsThisMonth: number;
+  failedActionsThisMonth: number;
+  paymentsThisMonth: number;
+  hoursServiceActiveThisMonth: number;
+  monthStart: Date;
+  monthEnd: Date;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated, logout, macAddress, routerIdentity } = useAuth();
   const { addToast } = useToast();
   
   const [activeTab, setActiveTab] = useState("overview");
@@ -65,6 +108,15 @@ export default function DashboardPage() {
   const [giftPhoneNumber, setGiftPhoneNumber] = useState('');
   const [selectedGiftPlan, setSelectedGiftPlan] = useState<string | null>(null);
   const [sendingGift, setSendingGift] = useState(false);
+  const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
+  const [billingData, setBillingData] = useState<BillingData | null>(null);
+  const [connectionMetrics, setConnectionMetrics] = useState<ConnectionMetrics | null>(null);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
+  const [activityStatsLoading, setActivityStatsLoading] = useState(true);
+  const [giftPasswordMode, setGiftPasswordMode] = useState<'generate' | 'manual'>('generate');
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -84,6 +136,59 @@ export default function DashboardPage() {
     };
     return planMap[priceNum] || `Plan ${priceNum}`;
   };
+
+  // Fetch recent activities, billing, and metrics data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!isAuthenticated || !user?.userId) {
+        return;
+      }
+
+      try {
+        // Fetch recent activities
+        setActivitiesLoading(true);
+        const activitiesRes = await apiFetchGet<any>('/activities/recent?page=1&pageSize=5');
+        if (activitiesRes?.activities) {
+          setRecentActivities(activitiesRes.activities);
+        }
+        setActivitiesLoading(false);
+
+        // Fetch activity stats
+        setActivityStatsLoading(true);
+        const statsRes = await apiFetchGet<ActivityStats>('/activities/stats');
+        if (statsRes) {
+          setActivityStats(statsRes);
+        }
+        setActivityStatsLoading(false);
+
+        // Fetch billing data
+        setBillingLoading(true);
+        const billingRes = await apiFetchGet<BillingData>('/user/billing');
+        if (billingRes) {
+          setBillingData(billingRes);
+        }
+        setBillingLoading(false);
+
+        // Fetch connection metrics
+        setMetricsLoading(true);
+        const metricsRes = await apiFetchGet<ConnectionMetrics>('/connection/metrics');
+        if (metricsRes) {
+          setConnectionMetrics(metricsRes);
+        }
+        setMetricsLoading(false);
+      } catch (err) {
+        console.error('Failed to fetch dashboard data:', err);
+        setActivitiesLoading(false);
+        setActivityStatsLoading(false);
+        setBillingLoading(false);
+        setMetricsLoading(false);
+      }
+    };
+
+    if (!authLoading && isAuthenticated) {
+      fetchDashboardData();
+    }
+  }, [isAuthenticated, authLoading, user?.userId]);
 
   // Fetch session and user plan data
   useEffect(() => {
@@ -178,15 +283,43 @@ export default function DashboardPage() {
     try {
       setPurchasing(planId);
       
-      const response = await apiFetchPost('/payments/initiate', {
+      const paymentPayload: any = {
         planId,
         email: user?.username + '@splendidstarlink.com',
         phone: phoneNumber,
         externalId: Date.now().toString(),
         name: user?.username || 'User',
-      });
+      };
 
-      addToast(`Transaction ID: ${response.transId}. Please complete payment on your mobile device.`, 'success', 5000);
+      // Include MAC and router info if available (from WiFi redirect)
+      if (macAddress) {
+        paymentPayload.macAddress = macAddress;
+      }
+      if (routerIdentity) {
+        paymentPayload.routerIdentity = routerIdentity;
+      }
+
+      const response = await apiFetchPost('/payments/initiate', paymentPayload);
+      
+      const selectedPlan = plans.find(p => p._id === planId);
+      const planName = selectedPlan?.name || 'Plan';
+      const planDuration = selectedPlan?.duration || 24;
+
+      addToast(
+        `✅ Payment initiated!\n\n` +
+        `Plan: ${planName}\n` +
+        `Duration: ${planDuration} hours\n` +
+        `Transaction ID: ${response.transId}\n\n` +
+        `Complete payment on your mobile device.`,
+        'success',
+        8000
+      );
+
+      // Redirect to connection status after 2 seconds
+      setTimeout(() => {
+        router.push('/connection-status');
+      }, 2000);
+      
       setShowPaymentForm(null);
       setPhoneNumber('');
       
@@ -196,6 +329,17 @@ export default function DashboardPage() {
     } finally {
       setPurchasing(null);
     }
+  };
+
+  // Generate a random password for gift recipients
+  const generateRandomPassword = (): string => {
+    const length = 10;
+    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < length; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    return password;
   };
 
   // Handle gift submission
@@ -214,9 +358,24 @@ export default function DashboardPage() {
       addToast('Please enter your phone number for payment', 'warning');
       return;
     }
+    
+    // Validate password based on mode
+    if (giftPasswordMode === 'manual') {
+      if (!giftRecipientPassword.trim() || giftRecipientPassword.length < 6) {
+        addToast('Password must be at least 6 characters', 'warning');
+        return;
+      }
+    }
 
     try {
       setSendingGift(true);
+      
+      // Determine password based on mode
+      let recipientPassword = giftRecipientPassword;
+      if (giftPasswordMode === 'generate') {
+        recipientPassword = generateRandomPassword();
+        setGiftRecipientPassword(recipientPassword);
+      }
       
       const response = await apiFetchPost('/payments/initiate', {
         planId: selectedGiftPlan,
@@ -224,15 +383,39 @@ export default function DashboardPage() {
         phone: giftPhoneNumber,
         externalId: Date.now().toString(),
         name: giftRecipientUsername,
+        isGift: true,
+        recipientUsername: giftRecipientUsername,
       });
 
-      addToast(`Gift sent to ${giftRecipientUsername}! Transaction ID: ${response.transId}. Complete payment on your mobile device.`, 'success', 6000);
+      const selectedPlan = plans.find(p => p._id === selectedGiftPlan);
+      const planDuration = selectedPlan?.duration || 24;
+      
+      addToast(
+        `🎁 Gift successfully sent to ${giftRecipientUsername}!\n\n` +
+        `Login Credentials:\n` +
+        `Username: ${giftRecipientUsername}\n` +
+        `Password: ${recipientPassword}\n\n` +
+        `Plan: ${planDuration} hours access\n` +
+        `Transaction ID: ${response.transId}\n\n` +
+        `${giftPasswordMode === 'generate' 
+          ? 'A secure password was automatically generated.' 
+          : 'Please share the password you set with the recipient.'}` +
+        `\n\nComplete payment on your mobile device. Gift will activate immediately for the recipient.`,
+        'success',
+        10000
+      );
       
       // Reset form
       setGiftRecipientUsername('');
       setGiftRecipientPassword('');
       setGiftPhoneNumber('');
       setSelectedGiftPlan(null);
+      setGiftPasswordMode('generate');
+
+      // Redirect to connection status after 3 seconds
+      setTimeout(() => {
+        router.push('/connection-status');
+      }, 3000);
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Gift failed';
@@ -261,20 +444,13 @@ export default function DashboardPage() {
   }
 
   const connectionStats = {
-    downloadSpeed: 245,
-    uploadSpeed: 42,
-    latency: 35,
+    downloadSpeed: connectionMetrics?.metrics?.downloadSpeed || 0,
+    uploadSpeed: connectionMetrics?.metrics?.uploadSpeed || 0,
+    latency: connectionMetrics?.metrics?.latency || 0,
     uptime: 99.9,
     dataUsed: "1.2 TB",
     dataLimit: "Unlimited"
   };
-
-  const recentActivity = [
-    { id: 1, action: "Payment processed", date: "2024-03-26", status: "success" },
-    { id: 2, action: "Service upgrade", date: "2024-03-20", status: "success" },
-    { id: 3, action: "Connection issue", date: "2024-03-15", status: "resolved" },
-    { id: 4, action: "Router firmware update", date: "2024-03-10", status: "success" }
-  ];
 
   const menuItems = [
     { id: "overview", label: "Overview", icon: Activity },
@@ -332,8 +508,27 @@ export default function DashboardPage() {
                     <span className="text-amber-700">Uptime This Month</span>
                     <Clock className="h-5 w-5 text-orange-500" />
                   </div>
-                  <div className="text-xl font-bold text-amber-900">{connectionStats.uptime}%</div>
-                  <div className="text-sm text-amber-600">Outstanding reliability</div>
+                  {activityStatsLoading ? (
+                    <div className="text-xl font-bold text-amber-900">Loading...</div>
+                  ) : activityStats ? (
+                    <>
+                      <div className="text-xl font-bold text-amber-900">
+                        {activityStats.successfulActionsThisMonth + activityStats.failedActionsThisMonth > 0
+                          ? ((activityStats.successfulActionsThisMonth / (activityStats.successfulActionsThisMonth + activityStats.failedActionsThisMonth)) * 100).toFixed(1)
+                          : 100}%
+                      </div>
+                      <div className="text-sm text-amber-600">
+                        {activityStats.hoursServiceActiveThisMonth > 0 
+                          ? `${activityStats.hoursServiceActiveThisMonth} hours active` 
+                          : 'No service yet'}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-xl font-bold text-amber-900">--</div>
+                      <div className="text-sm text-amber-600">Unable to load</div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -370,30 +565,45 @@ export default function DashboardPage() {
             {/* Recent Activity */}
             <div className="bg-white rounded-lg p-6 border border-amber-900/20 shadow-sm">
               <h3 className="text-xl font-bold mb-4 text-amber-900">Recent Activity</h3>
-              <div className="space-y-3">
-                {recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                    <div className="flex items-center space-x-3">
-                      {activity.status === "success" ? (
-                        <CheckCircle className="h-5 w-5 text-green-500" />
-                      ) : (
-                        <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                      )}
-                      <div>
-                        <div className="font-medium text-amber-900">{activity.action}</div>
-                        <div className="text-sm text-amber-600">{activity.date}</div>
+              {activitiesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-amber-700 mr-2" />
+                  <span className="text-amber-700">Loading activities...</span>
+                </div>
+              ) : recentActivities && recentActivities.length > 0 ? (
+                <div className="space-y-3">
+                  {recentActivities.map((activity) => (
+                    <div key={activity.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                      <div className="flex items-center space-x-3">
+                        {activity.status === "success" ? (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        ) : activity.status === "failed" ? (
+                          <AlertTriangle className="h-5 w-5 text-red-500" />
+                        ) : (
+                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                        )}
+                        <div>
+                          <div className="font-medium text-amber-900">{activity.description}</div>
+                          <div className="text-sm text-amber-600">{new Date(activity.timestamp).toLocaleDateString()}</div>
+                        </div>
                       </div>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        activity.status === "success" 
+                          ? "bg-green-500/20 text-green-400" 
+                          : activity.status === "failed"
+                          ? "bg-red-500/20 text-red-400"
+                          : "bg-yellow-500/20 text-yellow-400"
+                      }`}>
+                        {activity.status}
+                      </span>
                     </div>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      activity.status === "success" 
-                        ? "bg-green-500/20 text-green-400" 
-                        : "bg-yellow-500/20 text-yellow-400"
-                    }`}>
-                      {activity.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-amber-600">
+                  <p>No activities yet</p>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -404,58 +614,89 @@ export default function DashboardPage() {
             <div className="bg-white rounded-lg p-6 border border-amber-900/20 shadow-sm">
               <h2 className="text-2xl font-bold mb-6 text-amber-900">Connection Details</h2>
               
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-amber-900">Performance Metrics</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">Download Speed</span>
-                      <span className="font-bold">{connectionStats.downloadSpeed} Mbps</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">Upload Speed</span>
-                      <span className="font-bold">{connectionStats.uploadSpeed} Mbps</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">Latency</span>
-                      <span className="font-bold">{connectionStats.latency} ms</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">Packet Loss</span>
-                      <span className="font-bold">0.1%</span>
-                    </div>
-                  </div>
+              {metricsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-amber-700 mr-2" />
+                  <span className="text-amber-700">Loading metrics...</span>
                 </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-amber-900">Data Usage</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">This Month</span>
-                      <span className="font-bold">{connectionStats.dataUsed}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">Data Limit</span>
-                      <span className="font-bold text-green-400">{connectionStats.dataLimit}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">Peak Usage</span>
-                      <span className="font-bold">8 PM - 11 PM</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                      <span className="text-amber-700">Connected Devices</span>
-                      <span className="font-bold">12</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 p-4 bg-green-500/20 border border-green-500 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <Wifi className="h-6 w-6 text-green-400" />
+              ) : (
+                <div className="grid md:grid-cols-2 gap-6">
                   <div>
-                    <div className="font-semibold">Connection Status: Excellent</div>
-                    <div className="text-sm text-amber-600">Your Splendid StarLink connection is performing optimally</div>
+                    <h3 className="text-lg font-semibold mb-4 text-amber-900">Performance Metrics</h3>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Download Speed</span>
+                        <span className="font-bold">{connectionMetrics?.metrics?.downloadSpeed?.toFixed(1) || 0} Mbps</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Upload Speed</span>
+                        <span className="font-bold">{connectionMetrics?.metrics?.uploadSpeed?.toFixed(1) || 0} Mbps</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Latency</span>
+                        <span className="font-bold">{connectionMetrics?.metrics?.latency?.toFixed(0) || 0} ms</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Signal Strength</span>
+                        <span className="font-bold">{connectionMetrics?.metrics?.signalStrength?.toFixed(0) || 0}%</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Connection Quality</span>
+                        <span className={`font-bold capitalize ${
+                          connectionMetrics?.metrics?.connectionQuality === 'excellent' ? 'text-green-500' :
+                          connectionMetrics?.metrics?.connectionQuality === 'good' ? 'text-green-400' :
+                          connectionMetrics?.metrics?.connectionQuality === 'fair' ? 'text-yellow-500' : 'text-red-500'
+                        }`}>
+                          {connectionMetrics?.metrics?.connectionQuality || 'unknown'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4 text-amber-900">Data Usage</h3>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">This Month</span>
+                        <span className="font-bold">{connectionStats.dataUsed}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Data Limit</span>
+                        <span className="font-bold text-green-400">{connectionStats.dataLimit}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Peak Usage</span>
+                        <span className="font-bold">8 PM - 11 PM</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Connected Devices</span>
+                        <span className="font-bold">12</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <span className="text-amber-700">Session Status</span>
+                        <span className={`font-bold ${connectionMetrics?.isConnected ? 'text-green-500' : 'text-red-500'}`}>
+                          {connectionMetrics?.isConnected ? 'Connected' : 'Offline'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className={`mt-6 p-4 rounded-lg border ${
+                connectionMetrics?.isConnected 
+                  ? 'bg-green-500/20 border-green-500' 
+                  : 'bg-red-500/20 border-red-500'
+              }`}>
+                <div className="flex items-center space-x-3">
+                  <Wifi className={`h-6 w-6 ${connectionMetrics?.isConnected ? 'text-green-400' : 'text-red-400'}`} />
+                  <div>
+                    <div className="font-semibold">{connectionMetrics?.isConnected ? 'Connection Status: Excellent' : 'Connection Status: Offline'}</div>
+                    <div className="text-sm text-amber-600">
+                      {connectionMetrics?.isConnected 
+                        ? 'Your Splendid StarLink connection is performing optimally' 
+                        : 'No active connection available'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -620,6 +861,73 @@ export default function DashboardPage() {
                         required
                       />
                     </div>
+                    
+                    {/* Password Mode Selection */}
+                    <div className="pt-2 border-t border-amber-900/20">
+                      <label className="block text-sm font-medium text-amber-700 mb-3">Recipient Password</label>
+                      <div className="space-y-3">
+                        <label className="flex items-center p-3 bg-white border border-amber-900/20 rounded-lg cursor-pointer hover:border-amber-500 transition">
+                          <input 
+                            type="radio" 
+                            name="password-mode" 
+                            value="generate"
+                            checked={giftPasswordMode === 'generate'}
+                            onChange={(e) => {
+                              setGiftPasswordMode(e.target.value as 'generate' | 'manual');
+                              setGiftRecipientPassword('');
+                            }}
+                            className="mr-3" 
+                          />
+                          <div>
+                            <div className="font-medium text-amber-900">Auto-Generate</div>
+                            <div className="text-xs text-amber-600">We'll create a secure password</div>
+                          </div>
+                        </label>
+                        
+                        <label className="flex items-center p-3 bg-white border border-amber-900/20 rounded-lg cursor-pointer hover:border-amber-500 transition">
+                          <input 
+                            type="radio" 
+                            name="password-mode" 
+                            value="manual"
+                            checked={giftPasswordMode === 'manual'}
+                            onChange={(e) => {
+                              setGiftPasswordMode(e.target.value as 'generate' | 'manual');
+                              setGiftRecipientPassword('');
+                            }}
+                            className="mr-3" 
+                          />
+                          <div>
+                            <div className="font-medium text-amber-900">Set Manually</div>
+                            <div className="text-xs text-amber-600">You choose the password</div>
+                          </div>
+                        </label>
+                      </div>
+
+                      {/* Manual Password Input */}
+                      {giftPasswordMode === 'manual' && (
+                        <div className="mt-3">
+                          <input
+                            type="text"
+                            value={giftRecipientPassword}
+                            onChange={(e) => setGiftRecipientPassword(e.target.value)}
+                            className="w-full p-3 bg-amber-50 border border-amber-900/20 rounded-lg text-amber-900 placeholder-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            placeholder="Enter password for recipient"
+                            minLength={6}
+                            required={giftPasswordMode === 'manual'}
+                          />
+                          <p className="text-xs text-amber-600 mt-2">Minimum 6 characters</p>
+                        </div>
+                      )}
+
+                      {/* Auto-Generate Info */}
+                      {giftPasswordMode === 'generate' && (
+                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-xs text-green-700">
+                            ✓ A secure 10-character password will be generated and shown after sending the gift
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -679,6 +987,7 @@ export default function DashboardPage() {
                       setGiftRecipientPassword('');
                       setGiftPhoneNumber('');
                       setSelectedGiftPlan(null);
+                      setGiftPasswordMode('generate');
                     }}
                     className="px-6 py-3 border border-amber-900/20 rounded-lg text-amber-700 hover:border-amber-500 hover:bg-amber-50 transition font-semibold"
                   >
@@ -696,72 +1005,93 @@ export default function DashboardPage() {
             <div className="bg-white rounded-lg p-6 border border-amber-900/20 shadow-sm">
               <h2 className="text-2xl font-bold mb-6 text-amber-900">Billing Information</h2>
               
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-amber-900">Current Plan</h3>
-                  <div className="p-4 bg-amber-50 rounded-lg border border-amber-900/20">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-amber-700">Current Plan</span>
-                      {activePlan ? (
-                        <CheckCircle className="h-5 w-5 text-green-500" />
-                      ) : (
-                        <AlertTriangle className="h-5 w-5 text-gray-400" />
-                      )}
-                    </div>
-                    <div className="text-xl font-bold text-amber-900">
-                      {activePlan ? getPlanName(activePlan.amount) : "No plan activated"}
-                    </div>
-                    <div className="text-sm text-amber-600">
-                      {activePlan 
-                        ? `Next billing date: ${new Date(activePlan.purchasedAt).toLocaleDateString()}`
-                        : "No active plan"}
-                    </div>
-                    <Link href="/plans" className="text-amber-400 hover:text-amber-900 transition cursor-pointer">
-                      Browse plans →
-                    </Link>
-                  </div>
+              {billingLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-amber-700 mr-2" />
+                  <span className="text-amber-700">Loading billing information...</span>
                 </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-amber-900">Payment Method</h3>
-                  <div className="p-4 bg-amber-50 rounded-lg border border-amber-900/20">
-                    <div className="flex items-center space-x-3 mb-3">
-                      <CreditCard className="h-5 w-5 text-amber-700" />
-                      <span>••••• •••• •••• 4242</span>
-                    </div>
-                    <p className="text-amber-600 text-sm">Expires 12/25</p>
-                    <button className="mt-3 text-amber-400 hover:text-amber-900 transition text-sm cursor-pointer">
-                      Update payment method
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <h3 className="text-lg font-semibold mb-4 text-amber-900">Recent Invoices</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+              ) : (
+                <>
+                  <div className="grid md:grid-cols-2 gap-6 mb-6">
                     <div>
-                      <div className="font-medium">March 2024</div>
-                      <div className="text-sm text-amber-600">Paid on Mar 1, 2024</div>
+                      <h3 className="text-lg font-semibold mb-4 text-amber-900">Current Plan</h3>
+                      <div className="p-4 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-amber-700">Current Plan</span>
+                          {activePlan ? (
+                            <CheckCircle className="h-5 w-5 text-green-500" />
+                          ) : (
+                            <AlertTriangle className="h-5 w-5 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="text-xl font-bold text-amber-900">
+                          {activePlan ? getPlanName(activePlan.amount) : "No plan activated"}
+                        </div>
+                        <div className="text-sm text-amber-600">
+                          {activePlan 
+                            ? `Next billing date: ${new Date(activePlan.purchasedAt).toLocaleDateString()}`
+                            : "No active plan"}
+                        </div>
+                        <Link href="/plans" className="text-amber-400 hover:text-amber-900 transition cursor-pointer">
+                          Browse plans →
+                        </Link>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <span className="font-bold text-amber-900">200 FCFA</span>
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+
                     <div>
-                      <div className="font-medium">February 2024</div>
-                      <div className="text-sm text-amber-600">Paid on Feb 1, 2024</div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <span className="font-bold text-amber-900">200 FCFA</span>
-                      <CheckCircle className="h-5 w-5 text-green-500" />
+                      <h3 className="text-lg font-semibold mb-4 text-amber-900">Billing Summary</h3>
+                      <div className="p-4 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-amber-700">Total Invoices</span>
+                            <span className="font-bold text-amber-900">{billingData?.totalInvoices || 0}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-amber-700">Total Spent</span>
+                            <span className="font-bold text-amber-900">{billingData?.totalAmountSpent || 0} FCFA</span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2 border-t border-amber-900/20">
+                            <span className="text-amber-700">Account Status</span>
+                            <span className="font-bold text-green-500">Active</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4 text-amber-900">Recent Invoices</h3>
+                    {billingData?.invoices && billingData.invoices.length > 0 ? (
+                      <div className="space-y-3">
+                        {billingData.invoices.slice(0, 5).map((invoice) => (
+                          <div key={invoice.id} className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                            <div>
+                              <div className="font-medium text-amber-900">{invoice.planName}</div>
+                              <div className="text-sm text-amber-600">
+                                Paid on {new Date(invoice.purchaseDate).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <span className="font-bold text-amber-900">{invoice.amount} FCFA</span>
+                              {invoice.status === 'SUCCESSFUL' ? (
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                              ) : invoice.status === 'FAILED' ? (
+                                <AlertTriangle className="h-5 w-5 text-red-500" />
+                              ) : (
+                                <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-amber-600 bg-amber-50 rounded-lg border border-amber-900/20">
+                        <p>No invoices yet</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         );

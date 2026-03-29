@@ -19,7 +19,7 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [redirectInfo, setRedirectInfo] = useState<{ redirect?: string; plan?: string; name?: string }>({});
+  const [redirectInfo, setRedirectInfo] = useState<{ redirect?: string; plan?: string; name?: string; mac?: string; router?: string }>({});
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -34,9 +34,17 @@ export default function SignupPage() {
     const redirect = urlParams.get('redirect');
     const plan = urlParams.get('plan');
     const name = urlParams.get('name');
+    const mac = urlParams.get('mac');
+    const router = urlParams.get('router');
     
-    if (redirect || plan || name) {
-      setRedirectInfo({ redirect: redirect || '', plan: plan || '', name: name || '' });
+    if (redirect || plan || name || mac || router) {
+      setRedirectInfo({ 
+        redirect: redirect || '', 
+        plan: plan || '', 
+        name: name || '',
+        mac: mac || '',
+        router: router || ''
+      });
     }
   }, []);
 
@@ -104,7 +112,7 @@ export default function SignupPage() {
         newUser = data.user;
         try {
           // Use auth context login to properly store token
-          await login(formData.username, formData.password);
+          await login(formData.username, formData.password, redirectInfo.mac, redirectInfo.router);
           // Login function will internally redirect or we redirect here
           router.push('/dashboard?tab=bundles');
           return;
@@ -150,6 +158,12 @@ export default function SignupPage() {
             {error && (
               <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-3 rounded-lg text-sm">
                 {error}
+              </div>
+            )}
+
+            {redirectInfo.router && (
+              <div className="bg-blue-500/10 border border-blue-500/30 text-blue-700 px-4 py-3 rounded-lg text-sm">
+                🛰️ Connected to: <strong>{redirectInfo.router}</strong>
               </div>
             )}
 

@@ -13,9 +13,13 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<{ user: User; token: string }>;
+  macAddress: string | null;
+  routerIdentity: string | null;
+  login: (username: string, password: string, macAddress?: string, routerIdentity?: string) => Promise<{ user: User; token: string }>;
   logout: () => Promise<void>;
   setUser: (user: User | null) => void;
+  setMacAddress: (mac: string | null) => void;
+  setRouterIdentity: (router: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,17 +28,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setTokenState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [macAddress, setMacAddressState] = useState<string | null>(null);
+  const [routerIdentity, setRouterIdentityState] = useState<string | null>(null);
 
   // Initialize auth state from localStorage on mount
   useEffect(() => {
     const initAuth = () => {
       const storedToken = getToken();
       const storedUser = getStoredUser();
+      const storedMac = localStorage.getItem('macAddress');
+      const storedRouter = localStorage.getItem('routerIdentity');
 
       if (storedToken && storedUser) {
         setTokenState(storedToken);
         setUser(storedUser);
       }
+      if (storedMac) setMacAddressState(storedMac);
+      if (storedRouter) setRouterIdentityState(storedRouter);
       setIsLoading(false);
     };
 
@@ -42,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (username: string, password: string) => {
+    async (username: string, password: string, macAddress?: string, routerIdentity?: string) => {
       setIsLoading(true);
       try {
         const response = await fetch(
@@ -77,6 +87,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTokenState(newToken);
         setUser(newUser);
 
+        // Store MAC and router if provided
+        if (macAddress) {
+          localStorage.setItem('macAddress', macAddress);
+          setMacAddressState(macAddress);
+        }
+        if (routerIdentity) {
+          localStorage.setItem('routerIdentity', routerIdentity);
+          setRouterIdentityState(routerIdentity);
+        }
+
         return {
           user: newUser,
           token: newToken,
@@ -97,6 +117,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearToken();
       setTokenState(null);
       setUser(null);
+      localStorage.removeItem('macAddress');
+      localStorage.removeItem('routerIdentity');
+      setMacAddressState(null);
+      setRouterIdentityState(null);
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
@@ -114,14 +138,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateMacAddress = useCallback((mac: string | null) => {
+    if (mac) {
+      localStorage.setItem('macAddress', mac);
+      setMacAddressState(mac);
+    } else {
+      localStorage.removeItem('macAddress');
+      setMacAddressState(null);
+    }
+  }, []);
+
+  const updateRouterIdentity = useCallback((router: string | null) => {
+    if (router) {
+      localStorage.setItem('routerIdentity', router);
+      setRouterIdentityState(router);
+    } else {
+      localStorage.removeItem('routerIdentity');
+      setRouterIdentityState(null);
+    }
+  }, []);
+
   const value: AuthContextType = {
     user,
     token,
     isLoading,
     isAuthenticated: !!token && !!user,
+    macAddress,
+    routerIdentity,
     login,
     logout,
     setUser: updateUser,
+    setMacAddress: updateMacAddress,
+    setRouterIdentity: updateRouterIdentity,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

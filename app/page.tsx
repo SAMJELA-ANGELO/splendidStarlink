@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Satellite, Rocket, Globe, Wifi, CheckCircle, ArrowRight, Menu, X, Shield, Zap, Users, Star } from "lucide-react";
+import { Satellite, Rocket, Globe, Wifi, CheckCircle, ArrowRight, Menu, X, Shield, Zap, Users, Star, RocketIcon } from "lucide-react";
 
 export default function Home() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -63,22 +63,22 @@ export default function Home() {
               High-Speed Internet from Space
             </h1>
             <p className="text-xl md:text-2xl text-gray-600 mb-8 animate-slide-up animation-delay-200">
-              Experience the future of connectivity with Splendid StarLink's revolutionary satellite technology.
+              Experience the future of connectivity with Splendid StarLink's revolutionary Starlink services.
             </p>
           </div>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-slide-up animation-delay-400">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center text-center animate-slide-up animation-delay-400">
             <Link 
               href="/plans" 
-              className="bg-amber-600 hover:bg-amber-700 px-6 py-2 rounded-lg text-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-amber-500/25 flex items-center group"
+              className="bg-amber-600 hover:bg-amber-700 justify-center px-6 py-2 rounded-lg text-center text-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-amber-500/25 flex items-center group"
             >
               Browse Plans <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-300" />
             </Link>
             <Link 
               href="/auth/signup" 
-              className="border border-amber-900/20 px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-300 hover:scale-105 hover:border-amber-500 hover:bg-amber-50 group"
+              className="border border:bg-amber-600 hover:bg-amber-700 justify-center px-6 py-2 rounded-lg text-center text-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-amber-500/25 flex items-center group"
             >
-              Get Started 
+              Get Started <RocketIcon className="ml-2 h-5 w-5 group-hover:translate-y-[-2px] transition-transform duration-300" />
             </Link>
           </div>
         </div>
