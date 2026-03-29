@@ -196,32 +196,14 @@ export default function DashboardPage() {
       if (!isAuthenticated || !user?.userId) {
         return;
       }
-      
       try {
         setDataLoading(true);
-        console.log('Fetching session data for user:', user.userId);
-        
-        // Fetch session data for isActive status
+        // Fetch session data for isActive status only
         const sessionRes = await apiFetchGet<SessionData>('/sessions/status');
-        console.log('Session data:', sessionRes);
         setSessionData(sessionRes);
-        
-        // Fetch user data to get purchased bundles
-        const userRes = await apiFetchGet<any>('/users/me');
-        console.log('User data:', userRes);
-        
-        if (userRes?.purchasedBundles && userRes.purchasedBundles.length > 0) {
-          // Get the most recent purchased bundle
-          const sorted = [...userRes.purchasedBundles].sort(
-            (a, b) => new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime()
-          );
-          setActivePlan(sorted[0]);
-        } else {
-          setActivePlan(null);
-        }
+        // Optionally, setActivePlan(null); or fetch plan info elsewhere if needed
       } catch (err) {
         console.error('Failed to fetch session data:', err);
-        // Set defaults on error
         setSessionData({ isActive: false });
         setActivePlan(null);
       } finally {
@@ -443,13 +425,25 @@ export default function DashboardPage() {
     return null;
   }
 
+  // Format bytes to human-readable string
+  function formatBytes(bytes?: number): string {
+    if (bytes === undefined || bytes === null) return 'N/A';
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
   const connectionStats = {
     downloadSpeed: connectionMetrics?.metrics?.downloadSpeed || 0,
     uploadSpeed: connectionMetrics?.metrics?.uploadSpeed || 0,
     latency: connectionMetrics?.metrics?.latency || 0,
-    uptime: 99.9,
-    dataUsed: "1.2 TB",
-    dataLimit: "Unlimited"
+    uptime: 99.9, // TODO: Replace with real uptime if available
+    dataUsed: formatBytes(connectionMetrics?.dataUsed),
+    dataLimit: connectionMetrics?.dataLimit !== undefined && connectionMetrics?.dataLimit !== null
+      ? formatBytes(connectionMetrics.dataLimit)
+      : 'Unlimited',
   };
 
   const menuItems = [
@@ -658,19 +652,19 @@ export default function DashboardPage() {
                     <div className="space-y-4">
                       <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">This Month</span>
-                        <span className="font-bold">{connectionStats.dataUsed}</span>
+                        <span className="font-bold">{formatBytes(connectionMetrics?.dataUsed)}</span>
                       </div>
                       <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">Data Limit</span>
-                        <span className="font-bold text-green-400">{connectionStats.dataLimit}</span>
+                        <span className="font-bold text-green-400">{connectionMetrics?.dataLimit !== undefined && connectionMetrics?.dataLimit !== null ? formatBytes(connectionMetrics.dataLimit) : 'Unlimited'}</span>
                       </div>
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
+                      {/* <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">Peak Usage</span>
                         <span className="font-bold">8 PM - 11 PM</span>
-                      </div>
+                      </div> */}
                       <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">Connected Devices</span>
-                        <span className="font-bold">12</span>
+                        <span className="font-bold">1</span>
                       </div>
                       <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">Session Status</span>
@@ -1062,27 +1056,51 @@ export default function DashboardPage() {
                   <div>
                     <h3 className="text-lg font-semibold mb-4 text-amber-900">Recent Invoices</h3>
                     {billingData?.invoices && billingData.invoices.length > 0 ? (
-                      <div className="space-y-3">
-                        {billingData.invoices.slice(0, 5).map((invoice) => (
-                          <div key={invoice.id} className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                            <div>
-                              <div className="font-medium text-amber-900">{invoice.planName}</div>
-                              <div className="text-sm text-amber-600">
-                                Paid on {new Date(invoice.purchaseDate).toLocaleDateString()}
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <span className="font-bold text-amber-900">{invoice.amount} FCFA</span>
-                              {invoice.status === 'SUCCESSFUL' ? (
-                                <CheckCircle className="h-5 w-5 text-green-500" />
-                              ) : invoice.status === 'FAILED' ? (
-                                <AlertTriangle className="h-5 w-5 text-red-500" />
-                              ) : (
-                                <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-amber-200">
+                          <thead className="bg-amber-100">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Plan</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Amount</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Date</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Status</th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-amber-700 uppercase tracking-wider">Gift?</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-amber-100">
+                            {billingData.invoices.slice(0, 5).map((invoice) => (
+                              <tr key={invoice.id}>
+                                <td className="px-4 py-2 font-medium text-amber-900">{invoice.planName}</td>
+                                <td className="px-4 py-2 font-bold text-amber-900">{invoice.amount} FCFA</td>
+                                <td className="px-4 py-2 text-amber-700">{new Date(invoice.purchaseDate).toLocaleString()}</td>
+                                <td className="px-4 py-2">
+                                  {invoice.status === 'SUCCESSFUL' ? (
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-700">
+                                      <CheckCircle className="h-4 w-4 mr-1" /> Successful
+                                    </span>
+                                  ) : invoice.status === 'FAILED' ? (
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-700">
+                                      <AlertTriangle className="h-4 w-4 mr-1" /> Failed
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-yellow-100 text-yellow-700">
+                                      <AlertTriangle className="h-4 w-4 mr-1" /> {invoice.status.charAt(0) + invoice.status.slice(1).toLowerCase()}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2">
+                                  {invoice.isGift ? (
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700">
+                                      🎁 Gift{invoice.recipientUsername ? ` for ${invoice.recipientUsername}` : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-700">No</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     ) : (
                       <div className="p-4 text-center text-amber-600 bg-amber-50 rounded-lg border border-amber-900/20">
