@@ -63,6 +63,13 @@ export function PaymentStatusMonitor({
           case 'SUCCESSFUL':
             console.log('✅ Payment SUCCESSFUL - triggering silent login');
             setPaymentData(data);
+            
+            // Store duration for silent login
+            if (data.activation?.plan?.duration) {
+              localStorage.setItem('wifiSessionDuration', data.activation.plan.duration.toString());
+              console.log(`⏱️ Stored session duration: ${data.activation.plan.duration} hours`);
+            }
+            
             setStatus('success');
             onPaymentSuccess?.(data);
             break;

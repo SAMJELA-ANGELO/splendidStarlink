@@ -65,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If WiFi parameters are present, this is a WiFi login
         if (macAddress || routerIdentity || fromWifi) {
           requestBody.fromWifi = true;
+          if (macAddress) requestBody.macAddress = macAddress;
           console.log('📡 WiFi login detected in AuthContext:', { macAddress, routerIdentity });
         }
 

@@ -14,8 +14,6 @@ function HomeContent() {
 
   // Session-based flow state
   const [isFromWifi, setIsFromWifi] = useState(false);
-  const [checkingMac, setCheckingMac] = useState(false);
-  const [macStatus, setMacStatus] = useState<{ exists: boolean; username?: string } | null>(null);
   const [wifiInfo, setWifiInfo] = useState<{
     mac: string | null;
     ip: string | null;
@@ -41,121 +39,47 @@ function HomeContent() {
       // Store in auth context
       setMacAddress(mac);
       localStorage.setItem("macAddress", mac);
+      localStorage.setItem("wifiMacAddress", mac); // For SilentLoginForm
       localStorage.setItem("wifiLinkLogin", link_login);
       if (link_orig) localStorage.setItem("wifiLinkOrig", link_orig);
 
       if (ip) {
         setUserIp(ip);
         localStorage.setItem("userIp", ip);
+        localStorage.setItem("wifiIpAddress", ip); // For SilentLoginForm
       }
+
       if (router_id) {
         setRouterIdentity(router_id);
         localStorage.setItem("routerIdentity", router_id);
       }
 
-      // Check if MAC has an active plan
-      checkMacStatus(mac);
+      // Redirect directly to login page
+      setTimeout(() => {
+        router.push(`/auth/login?mac=${encodeURIComponent(mac)}&router=${encodeURIComponent(router_id || '')}&ip=${encodeURIComponent(ip || '')}&link_login=${encodeURIComponent(link_login)}&link_orig=${encodeURIComponent(link_orig || '')}`);
+      }, 1500);
     } else {
       // Regular landing page load
       setIsFromWifi(false);
     }
   }, [searchParams, setMacAddress, setRouterIdentity, setUserIp]);
 
-  const checkMacStatus = async (mac: string) => {
-    setCheckingMac(true);
-    try {
-      console.log('🔍 Checking MAC status:', mac);
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "https://splendid-starlink.onrender.com"}/auth/check-mac`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mac }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ MAC found with plan status:', data);
-        setMacStatus({ exists: true, username: data.username });
-
-        const planStatusParam = data.planStatus ? `&planStatus=${encodeURIComponent(data.planStatus)}` : '';
-        
-        // Redirect to simple WiFi login page with MAC and username
-        setTimeout(() => {
-          router.push(`/auth/wifi-login-simple?mac=${encodeURIComponent(mac)}&username=${encodeURIComponent(data.username)}${planStatusParam}`);
-        }, 1500);
-      } else {
-        console.log('ℹ️ MAC not found - new user');
-        setMacStatus({ exists: false });
-        // Show signup form
-      }
-    } catch (error) {
-      console.error('❌ Error checking MAC:', error);
-      setMacStatus({ exists: false });
-    } finally {
-      setCheckingMac(false);
-    }
-  };
-
-  // If checking MAC status, show loading state
-  if (isFromWifi && checkingMac) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-amber-700 mx-auto mb-4" />
-          <p className="text-xl text-amber-900 font-semibold mb-2">Checking Your Status...</p>
-          <p className="text-gray-600">Verifying your WiFi credentials</p>
-        </div>
-      </div>
-    );
-  }
-
-  // If from WiFi and user exists with active plan
-  if (isFromWifi && macStatus?.exists && macStatus?.username) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
-        <div className="text-center max-w-md">
-          <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-          <p className="text-2xl font-bold text-amber-900 mb-2">Welcome Back!</p>
-          <p className="text-gray-600 mb-6">We found your account with an active subscription.</p>
-          <p className="text-sm text-amber-700 mb-4">Redirecting to login...</p>
-          <Loader2 className="h-8 w-8 animate-spin text-amber-700 mx-auto" />
-        </div>
-      </div>
-    );
-  }
-
-  // If from WiFi and user doesn't exist (new user)
-  if (isFromWifi && macStatus && !macStatus.exists && wifiInfo) {
+  // If from WiFi, show redirect message
+  if (isFromWifi && wifiInfo) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
         <div className="text-center max-w-md">
           <Wifi className="h-16 w-16 text-amber-700 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-amber-900 mb-2">Create Account</h1>
-          <p className="text-gray-600 mb-8">You&#39;re connected to Splendid StarLink WiFi. Create an account to get started.</p>
+          <h1 className="text-3xl font-bold text-amber-900 mb-2">Welcome to Splendid StarLink</h1>
+          <p className="text-gray-600 mb-8">You're connected to our WiFi network. Please log in to access the internet.</p>
           
           <div className="bg-amber-50 rounded-lg p-4 mb-6 text-left">
             <p className="text-sm text-gray-700 mb-2"><span className="font-semibold">Device MAC:</span> {wifiInfo.mac ? `${wifiInfo.mac.slice(0, 12)}...` : 'Unknown'}</p>
             <p className="text-sm text-gray-700"><span className="font-semibold">Router:</span> {wifiInfo.router_id || 'Unknown'}</p>
           </div>
 
-          <div className="space-y-3">
-            <button
-              onClick={() => router.push(`/auth/signup?mac=${encodeURIComponent(wifiInfo.mac || '')}&router=${encodeURIComponent(wifiInfo.router_id || '')}&ip=${encodeURIComponent(wifiInfo.ip || '')}&link_login=${encodeURIComponent(wifiInfo.link_login || '')}&link_orig=${encodeURIComponent(wifiInfo.link_orig || '')}`)}
-              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-3 rounded-lg transition flex items-center justify-center group"
-            >
-              Sign Up Now
-              <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-            </button>
-            <p className="text-sm text-gray-600">or</p>
-            <Link
-              href="/auth/login"
-              className="w-full border border-amber-600 text-amber-600 hover:bg-amber-50 font-semibold py-3 rounded-lg transition block"
-            >
-              Sign In Instead
-            </Link>
-          </div>
+          <p className="text-sm text-amber-700 mb-4">Redirecting to login...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-amber-700 mx-auto" />
         </div>
       </div>
     );

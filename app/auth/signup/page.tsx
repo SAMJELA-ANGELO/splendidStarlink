@@ -133,7 +133,7 @@ export default function SignupPage() {
         
         // Wait a moment for the context to update, then redirect
         setTimeout(() => {
-          router.push('/dashboard?tab=bundles');
+          router.push('/dashboard');
         }, 100);
         return;
       }
@@ -144,7 +144,7 @@ export default function SignupPage() {
           // Use auth context login to properly store token
           await login(formData.username, formData.password, redirectInfo.mac, redirectInfo.router);
           // Login function will internally redirect or we redirect here
-          router.push('/dashboard?tab=bundles');
+          router.push('/dashboard');
           return;
         } catch (loginError) {
           // If auto-login fails, redirect to login page for user to manually login
