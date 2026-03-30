@@ -101,13 +101,46 @@ export default function DashboardPage() {
 
     try {
       setPurchasing(planId);
-      const response = await apiFetchPost("/payments/initiate", {
+      
+      // Get WiFi info from AuthContext  
+      const { macAddress, routerIdentity } = useAuth();
+      
+      const paymentPayload: any = {
         planId,
         email: user?.username + "@splendidstarlink.com",
         phone: phoneNumber,
         externalId: Date.now().toString(),
         name: user?.username || "User",
-      });
+      };
+
+      // Include MAC, router info, and user IP if available
+      if (macAddress) {
+        paymentPayload.macAddress = macAddress;
+        console.log('✅ MAC address included:', macAddress);
+      }
+      
+      if (routerIdentity) {
+        paymentPayload.routerIdentity = routerIdentity;
+        console.log('✅ Router identity included:', routerIdentity);
+      }
+
+      const userIp = localStorage.getItem('wifiIpAddress');
+      if (userIp) {
+        paymentPayload.userIp = userIp;
+        console.log('✅ User IP included:', userIp);
+      } else {
+        console.warn('⚠️ User IP not found - silent login may not work');
+      }
+
+      const password = localStorage.getItem('wifiSessionPassword');
+      if (password) {
+        paymentPayload.password = password;
+        console.log('✅ Password included for silent login');
+      } else {
+        console.warn('⚠️ Password not found - user may need manual login');
+      }
+
+      const response = await apiFetchPost("/payments/initiate", paymentPayload);
 
       console.log('💳 Payment initiated:', response);
       console.log('   Transaction ID:', response.transId);

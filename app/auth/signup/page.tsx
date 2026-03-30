@@ -30,33 +30,15 @@ export default function SignupPage() {
 
   // Handle URL parameters for redirect
   useEffect(() => {
-    console.log('📱 ===== SIGNUP PAGE LOAD - URL PARAMETER EXTRACTION START =====');
-    const fullUrl = window.location.href;
-    console.log('📱 Full URL:', fullUrl);
-    
     const urlParams = new URLSearchParams(window.location.search);
     const redirect = urlParams.get('redirect');
     const plan = urlParams.get('plan');
     const name = urlParams.get('name');
     const mac = urlParams.get('mac');
-    const routerParam = urlParams.get('router_id') || urlParams.get('router');
-    const ip = urlParams.get('ip') || urlParams.get('client-ip');
+    const routerParam = urlParams.get('router');
+    const ip = urlParams.get('ip');
     const link_login = urlParams.get('link_login');
     const link_orig = urlParams.get('link_orig');
-    
-    console.log('📱 Extracted URL parameters:', {
-      redirect,
-      plan,
-      name,
-      mac: mac || 'NOT FOUND',
-      routerParam: routerParam || 'NOT FOUND',
-      ip: ip || 'NOT FOUND',
-      link_login: link_login || 'NOT FOUND',
-      link_orig: link_orig || 'NOT FOUND'
-    });
-    
-    const hasWiFiData = !!(mac || routerParam || ip || link_login);
-    console.log('📱 Has WiFi data?', hasWiFiData);
     
     if (redirect || plan || name || mac || routerParam || ip || link_login || link_orig) {
       setRedirectInfo({ 
@@ -70,15 +52,11 @@ export default function SignupPage() {
         link_orig: link_orig || ''
       });
       
+      // Log captured WiFi info for debugging
       if (mac || routerParam || ip || link_login) {
-        console.log('✅ WiFi Portal Info Captured (Signup):', { mac, router: routerParam, ip, link_login: !!link_login, link_orig: !!link_orig });
+        console.log('📱 WiFi Portal Info Captured (Signup):', { mac, router: routerParam, ip, link_login: !!link_login, link_orig: !!link_orig });
       }
-    } else {
-      console.warn('⚠️ No WiFi or redirect parameters found - user signing up directly without portal');
-      setRedirectInfo({});
     }
-    
-    console.log('📱 ===== SIGNUP PAGE LOAD - URL PARAMETER EXTRACTION END =====');
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,51 +79,29 @@ export default function SignupPage() {
     }
 
     try {
-      console.log('📝 ===== SIGNUP FORM SUBMISSION START =====');
-      console.log('📝 Form data:', { username: formData.username, hasPassword: !!formData.password });
-      console.log('📝 Redirect info state:', redirectInfo);
-      
-      const requestBody = { 
-        username: formData.username, 
-        password: formData.password,
-        macAddress: redirectInfo.mac || null,
-        ipAddress: redirectInfo.ip || null,
-        routerIdentity: redirectInfo.router || null,
-      };
-      
-      console.log('📝 Request body to send:', requestBody);
-      console.log('📝 WiFi data status:', {
-        hasMac: !!requestBody.macAddress,
-        hasIp: !!requestBody.ipAddress,
-        hasRouter: !!requestBody.routerIdentity
-      });
-      
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/auth/register`;
-      console.log('📝 API URL:', apiUrl);
-      
       const response = await fetch(
-        apiUrl,
+        `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/auth/register`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify({ 
+            username: formData.username, 
+            password: formData.password,
+            macAddress: redirectInfo.mac || null,
+            routerIdentity: redirectInfo.router || null,
+          }),
         }
       );
-      
-      console.log('📝 API Response status:', response.status);
 
       const data = await response.json();
-      console.log('📝 API Response data:', data);
 
       if (!response.ok) {
-        console.error('❌ API Error:', data);
         throw new Error(data.message || 'Signup failed');
       }
 
-      console.log('✅ ===== SIGNUP SUCCESSFUL =====');
-      console.log('✅ Signup successful:', { username: formData.username, mac: redirectInfo.mac, ip: redirectInfo.ip, router: redirectInfo.router });
+      console.log('✅ Signup successful:', { username: formData.username, mac: redirectInfo.mac });
 
       // Store password in localStorage for silent WiFi login after payment
       // Password is only stored on user's device, never transmitted after signup
@@ -199,10 +155,6 @@ export default function SignupPage() {
 
       throw new Error('Invalid signup response - no user data');
     } catch (err: any) {
-      console.error('❌ ===== SIGNUP FAILED =====');
-      console.error('❌ Error message:', err.message);
-      console.error('❌ Error object:', err);
-      console.log('📝 Last request WiFi data:', { mac: redirectInfo.mac, ip: redirectInfo.ip, router: redirectInfo.router });
       setError(err.message || "An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -242,28 +194,6 @@ export default function SignupPage() {
             {redirectInfo.router && (
               <div className="bg-blue-500/10 border border-blue-500/30 text-blue-700 px-4 py-3 rounded-lg text-sm">
                 🛰️ Connected to: <strong>{redirectInfo.router}</strong>
-              </div>
-            )}
-
-            {/* WiFi Data Status Indicator */}
-            {(redirectInfo.mac || redirectInfo.ip || redirectInfo.router) && (
-              <div className="bg-green-50 border border-green-300 rounded-lg p-3 text-sm space-y-1">
-                <div className="font-semibold text-green-900">✅ WiFi Info Captured</div>
-                <div className={`text-xs ${redirectInfo.mac ? 'text-green-700' : 'text-orange-700'}`}>
-                  📍 MAC: {redirectInfo.mac || <span className="italic opacity-60">not captured</span>}
-                </div>
-                <div className={`text-xs ${redirectInfo.ip ? 'text-green-700' : 'text-orange-700'}`}>
-                  🌐 IP: {redirectInfo.ip || <span className="italic opacity-60">not captured</span>}
-                </div>
-                <div className={`text-xs ${redirectInfo.router ? 'text-green-700' : 'text-orange-700'}`}>
-                  🛰️ Router: {redirectInfo.router || <span className="italic opacity-60">not captured</span>}
-                </div>
-              </div>
-            )}
-
-            {!redirectInfo.mac && !redirectInfo.ip && !redirectInfo.router && (
-              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-sm text-yellow-900">
-                ⚠️ No WiFi info detected - make sure you're accessing this from the WiFi portal
               </div>
             )}
 

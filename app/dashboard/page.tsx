@@ -294,6 +294,23 @@ export default function DashboardPage() {
         console.warn('⚠️ Router identity is NULL');
       }
 
+      // Capture user's local IP from localStorage (set by WiFi redirect or connection status)
+      const userIp = localStorage.getItem('wifiIpAddress');
+      if (userIp) {
+        paymentPayload.userIp = userIp;
+        console.log('✅ User IP included in payment:', userIp);
+      } else {
+        console.warn('⚠️ User IP not found in localStorage - silent login may not work');
+      }
+
+      const password = localStorage.getItem('wifiSessionPassword');
+      if (password) {
+        paymentPayload.password = password;
+        console.log('✅ Password included in payment for silent login');
+      } else {
+        console.warn('⚠️ Password not found in localStorage - user may need manual login');
+      }
+
       console.log('📤 Sending payment payload:', paymentPayload);
       const response = await apiFetchPost('/payments/initiate', paymentPayload);
       
@@ -379,6 +396,7 @@ export default function DashboardPage() {
         name: giftRecipientUsername,
         isGift: true,
         recipientUsername: giftRecipientUsername,
+        userIp: localStorage.getItem('wifiIpAddress') || undefined,
       });
 
       const selectedPlan = plans.find(p => p._id === selectedGiftPlan);

@@ -12,15 +12,13 @@
         // Capture all MikroTik variables needed for session management
         
         var mac = "$(mac-esc)";           // Client MAC address
-        var rawIp = "$(ip)" || "$(client-ip)";  // MikroTik may provide either ip or client-ip variable
-        var clientIp = rawIp || "";
+        var clientIp = "$(ip)";  // Client IP address
         var routerId = "$(identity)";     // Router identity
         var linkLogin = "$(link-login-only)"; // Auto-login endpoint
         var linkOrig = "$(link-orig)";    // Original destination
         
         console.log('🌐 MikroTik Captive Portal:', {
             mac: mac,
-            rawIp: rawIp,
             clientIp: clientIp,
             routerId: routerId,
             hasLinkLogin: !!linkLogin,
@@ -35,36 +33,15 @@
             "&link_login=" + encodeURIComponent(linkLogin) +
             "&link_orig=" + encodeURIComponent(linkOrig);
         
-        console.log('📡 Redirecting to frontend:', redirectUrl);
-        console.log('📡 Redirect payload', { mac, ip: clientIp, routerId, link_login: linkLogin, link_orig: linkOrig });
+        console.log('📡 Redirecting to frontend:', redirectUrl.substring(0, 80) + '...');
         
         // Redirect to Netlify frontend
         window.location.href = redirectUrl;
     </script>
     
-    <div style="text-align: center; font-family: Arial; margin-top: 50px;">
-        <p style="font-size: 18px; color: #666;">
-            🔄 Redirecting to <strong>Splendid StarLink</strong>...
-        </p>
-        
-        <!-- Debug Information Display -->
-        <div style="margin-top: 30px; padding: 20px; background: #f5f5f5; border-radius: 8px; max-width: 400px; margin-left: auto; margin-right: auto; font-family: monospace; font-size: 12px; color: #333;">
-            <strong>🔍 Debug Info:</strong><br>
-            <span id="debug-mac">MAC: Loading...</span><br>
-            <span id="debug-ip">IP: Loading...</span><br>
-            <span id="debug-router">Router: Loading...</span><br>
-            <span id="debug-login-link">Login Link: Loading...</span>
-        </div>
-        
-        <script>
-            // Display captured variables for debugging
-            document.getElementById('debug-mac').textContent = 'MAC: ' + (mac || 'Not captured');
-        document.getElementById('debug-ip').textContent = 'IP: ' + (clientIp || 'Not captured') + (rawIp && rawIp !== clientIp ? ' (fallback=' + rawIp + ')' : '');
-        document.getElementById('debug-router').textContent = 'Router: ' + (routerId || 'Not captured');
-        document.getElementById('debug-login-link').textContent = 'Login Link: ' + (linkLogin ? 'Available' : 'Not available');
-        </script>
-    </div>
-    
+    <p style="text-align: center; font-family: Arial; margin-top: 50px; font-size: 18px; color: #666;">
+        🔄 Redirecting to <strong>Splendid StarLink</strong>...
+    </p>
     <p style="text-align: center; font-family: Arial; font-size: 12px; color: #999; margin-top: 30px;">
         If you are not redirected, please <a href="https://splendidstarlink.netlify.app" style="color: #b8860b;">click here</a>.
 
