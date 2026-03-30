@@ -15,11 +15,13 @@ interface AuthContextType {
   isAuthenticated: boolean;
   macAddress: string | null;
   routerIdentity: string | null;
-  login: (username: string, password: string, macAddress?: string, routerIdentity?: string) => Promise<{ user: User; token: string }>;
+  userIp: string | null;
+  login: (username: string, password: string, macAddress?: string, routerIdentity?: string, fromWifi?: boolean) => Promise<{ user: User; token: string }>;
   logout: () => Promise<void>;
   setUser: (user: User | null) => void;
   setMacAddress: (mac: string | null) => void;
   setRouterIdentity: (router: string | null) => void;
+  setUserIp: (ip: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,6 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [macAddress, setMacAddressState] = useState<string | null>(null);
   const [routerIdentity, setRouterIdentityState] = useState<string | null>(null);
+  const [userIp, setUserIpState] = useState<string | null>(null);
 
   // Initialize auth state from localStorage on mount
   useEffect(() => {
@@ -38,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedUser = getStoredUser();
       const storedMac = localStorage.getItem('macAddress');
       const storedRouter = localStorage.getItem('routerIdentity');
+      const storedIp = localStorage.getItem('userIp');
 
       if (storedToken && storedUser) {
         setTokenState(storedToken);
@@ -45,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (storedMac) setMacAddressState(storedMac);
       if (storedRouter) setRouterIdentityState(storedRouter);
+      if (storedIp) setUserIpState(storedIp);
       setIsLoading(false);
     };
 
@@ -52,9 +57,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (username: string, password: string, macAddress?: string, routerIdentity?: string) => {
+    async (username: string, password: string, macAddress?: string, routerIdentity?: string, fromWifi?: boolean) => {
       setIsLoading(true);
       try {
+        const requestBody: any = { username, password };
+        
+        // If WiFi parameters are present, this is a WiFi login
+        if (macAddress || routerIdentity || fromWifi) {
+          requestBody.fromWifi = true;
+          console.log('📡 WiFi login detected in AuthContext:', { macAddress, routerIdentity });
+        }
+
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/auth/login`,
           
@@ -63,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify(requestBody),
           }
         );
 
@@ -87,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTokenState(newToken);
         setUser(newUser);
 
-        // Store MAC and router if provided
+        // Store WiFi info and password for potential silent auth
         if (macAddress) {
           localStorage.setItem('macAddress', macAddress);
           setMacAddressState(macAddress);
@@ -95,6 +108,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (routerIdentity) {
           localStorage.setItem('routerIdentity', routerIdentity);
           setRouterIdentityState(routerIdentity);
+        }
+        
+        // Store password for silent authentication during payment
+        if (password) {
+          localStorage.setItem('wifiSessionPassword', password);
+          console.log('🔒 Password stored for silent authentication');
         }
 
         return {
@@ -119,8 +138,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       localStorage.removeItem('macAddress');
       localStorage.removeItem('routerIdentity');
+      localStorage.removeItem('userIp');
       setMacAddressState(null);
       setRouterIdentityState(null);
+      setUserIpState(null);
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
@@ -158,6 +179,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateUserIp = useCallback((ip: string | null) => {
+    if (ip) {
+      localStorage.setItem('userIp', ip);
+      setUserIpState(ip);
+    } else {
+      localStorage.removeItem('userIp');
+      setUserIpState(null);
+    }
+  }, []);
+
   const value: AuthContextType = {
     user,
     token,
@@ -165,11 +196,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!token && !!user,
     macAddress,
     routerIdentity,
+    userIp,
     login,
     logout,
     setUser: updateUser,
     setMacAddress: updateMacAddress,
     setRouterIdentity: updateRouterIdentity,
+    setUserIp: updateUserIp,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

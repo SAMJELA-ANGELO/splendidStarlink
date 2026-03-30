@@ -25,6 +25,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { apiFetchGet, apiFetchPost } from "@/lib/api-client";
+import { PaymentStatusMonitor } from "@/components/PaymentStatusMonitor";
 
 interface Plan {
   _id: string;
@@ -63,6 +64,8 @@ interface BillingData {
     amount: number;
     status: string;
     purchaseDate: Date;
+    isGift?: boolean;
+    recipientUsername?: string;
   }>;
 }
 
@@ -117,6 +120,7 @@ export default function DashboardPage() {
   const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
   const [activityStatsLoading, setActivityStatsLoading] = useState(true);
   const [giftPasswordMode, setGiftPasswordMode] = useState<'generate' | 'manual'>('generate');
+  const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -265,6 +269,8 @@ export default function DashboardPage() {
     try {
       setPurchasing(planId);
       
+      console.log('🔄 Initiating payment with WiFi info:', { macAddress, routerIdentity, user: user?.username });
+      
       const paymentPayload: any = {
         planId,
         email: user?.username + '@splendidstarlink.com',
@@ -276,11 +282,19 @@ export default function DashboardPage() {
       // Include MAC and router info if available (from WiFi redirect)
       if (macAddress) {
         paymentPayload.macAddress = macAddress;
+        console.log('✅ MAC address included in payment:', macAddress);
+      } else {
+        console.warn('⚠️ MAC address is NULL - WiFi redirect may have failed');
       }
+      
       if (routerIdentity) {
         paymentPayload.routerIdentity = routerIdentity;
+        console.log('✅ Router identity included in payment:', routerIdentity);
+      } else {
+        console.warn('⚠️ Router identity is NULL');
       }
 
+      console.log('📤 Sending payment payload:', paymentPayload);
       const response = await apiFetchPost('/payments/initiate', paymentPayload);
       
       const selectedPlan = plans.find(p => p._id === planId);
@@ -297,10 +311,8 @@ export default function DashboardPage() {
         8000
       );
 
-      // Redirect to connection status after 2 seconds
-      setTimeout(() => {
-        router.push('/connection-status');
-      }, 2000);
+      // Set transaction ID to trigger PaymentStatusMonitor
+      setActiveTransactionId(response.transId);
       
       setShowPaymentForm(null);
       setPhoneNumber('');
@@ -440,10 +452,8 @@ export default function DashboardPage() {
     uploadSpeed: connectionMetrics?.metrics?.uploadSpeed || 0,
     latency: connectionMetrics?.metrics?.latency || 0,
     uptime: 99.9, // TODO: Replace with real uptime if available
-    dataUsed: formatBytes(connectionMetrics?.dataUsed),
-    dataLimit: connectionMetrics?.dataLimit !== undefined && connectionMetrics?.dataLimit !== null
-      ? formatBytes(connectionMetrics.dataLimit)
-      : 'Unlimited',
+    dataUsed: 'N/A', // Data usage tracking available in metrics
+    dataLimit: 'Unlimited', // No hard data limit for active plans
   };
 
   const menuItems = [
@@ -652,11 +662,11 @@ export default function DashboardPage() {
                     <div className="space-y-4">
                       <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">This Month</span>
-                        <span className="font-bold">{formatBytes(connectionMetrics?.dataUsed)}</span>
+                        <span className="font-bold">{connectionStats.dataUsed}</span>
                       </div>
                       <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">Data Limit</span>
-                        <span className="font-bold text-green-400">{connectionMetrics?.dataLimit !== undefined && connectionMetrics?.dataLimit !== null ? formatBytes(connectionMetrics.dataLimit) : 'Unlimited'}</span>
+                        <span className="font-bold text-green-400">{connectionStats.dataLimit}</span>
                       </div>
                       {/* <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
                         <span className="text-amber-700">Peak Usage</span>
@@ -1213,6 +1223,25 @@ export default function DashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Payment Status Monitor Overlay */}
+      {activeTransactionId && (
+        <PaymentStatusMonitor
+          transactionId={activeTransactionId}
+          onPaymentSuccess={(data) => {
+            console.log('✅ Payment successful, user activated:', data);
+            addToast('🎉 Payment successful! Your internet is now active.', 'success', 5000);
+            setActiveTransactionId(null);
+            // Refresh dashboard data
+            window.location.reload();
+          }}
+          onPaymentFailed={(error) => {
+            console.error('❌ Payment failed:', error);
+            addToast(`Payment failed: ${error}`, 'error');
+            setActiveTransactionId(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="pragma" content="no-cache" />
+    <meta http-equiv="expires" content="-1" />
+    <title>Splendid StarLink - Connecting...</title>
+</head>
+<body>
+    <script>
+        // Session-Based Architecture
+        // Capture all MikroTik variables needed for session management
+        
+        var mac = "$(mac-esc)";           // Client MAC address
+        var clientIp = "$(ip)";  // Client IP address
+        var routerId = "$(identity)";     // Router identity
+        var linkLogin = "$(link-login-only)"; // Auto-login endpoint
+        var linkOrig = "$(link-orig)";    // Original destination
+        
+        console.log('🌐 MikroTik Captive Portal:', {
+            mac: mac,
+            clientIp: clientIp,
+            routerId: routerId,
+            hasLinkLogin: !!linkLogin,
+            hasLinkOrig: !!linkOrig
+        });
+        
+        // Build redirect URL with all variables
+        var redirectUrl = "https://splendidstarlink.netlify.app?" +
+            "mac=" + encodeURIComponent(mac) +
+            "&ip=" + encodeURIComponent(clientIp) +
+            "&router_id=" + encodeURIComponent(routerId) +
+            "&link_login=" + encodeURIComponent(linkLogin) +
+            "&link_orig=" + encodeURIComponent(linkOrig);
+        
+        console.log('📡 Redirecting to frontend:', redirectUrl.substring(0, 80) + '...');
+        
+        // Redirect to Netlify frontend
+        window.location.href = redirectUrl;
+    </script>
+    
+    <p style="text-align: center; font-family: Arial; margin-top: 50px; font-size: 18px; color: #666;">
+        🔄 Redirecting to <strong>Splendid StarLink</strong>...
+    </p>
+    <p style="text-align: center; font-family: Arial; font-size: 12px; color: #999; margin-top: 30px;">
+        If you are not redirected, please <a href="https://splendidstarlink.netlify.app" style="color: #b8860b;">click here</a>.
+

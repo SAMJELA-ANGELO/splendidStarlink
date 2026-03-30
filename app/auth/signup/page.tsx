@@ -19,7 +19,7 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [redirectInfo, setRedirectInfo] = useState<{ redirect?: string; plan?: string; name?: string; mac?: string; router?: string }>({});
+  const [redirectInfo, setRedirectInfo] = useState<{ redirect?: string; plan?: string; name?: string; mac?: string; router?: string; ip?: string; link_login?: string; link_orig?: string }>({});
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -35,16 +35,27 @@ export default function SignupPage() {
     const plan = urlParams.get('plan');
     const name = urlParams.get('name');
     const mac = urlParams.get('mac');
-    const router = urlParams.get('router');
+    const routerParam = urlParams.get('router');
+    const ip = urlParams.get('ip');
+    const link_login = urlParams.get('link_login');
+    const link_orig = urlParams.get('link_orig');
     
-    if (redirect || plan || name || mac || router) {
+    if (redirect || plan || name || mac || routerParam || ip || link_login || link_orig) {
       setRedirectInfo({ 
         redirect: redirect || '', 
         plan: plan || '', 
         name: name || '',
         mac: mac || '',
-        router: router || ''
+        router: routerParam || '',
+        ip: ip || '',
+        link_login: link_login || '',
+        link_orig: link_orig || ''
       });
+      
+      // Log captured WiFi info for debugging
+      if (mac || routerParam || ip || link_login) {
+        console.log('📱 WiFi Portal Info Captured (Signup):', { mac, router: routerParam, ip, link_login: !!link_login, link_orig: !!link_orig });
+      }
     }
   }, []);
 
@@ -77,7 +88,9 @@ export default function SignupPage() {
           },
           body: JSON.stringify({ 
             username: formData.username, 
-            password: formData.password 
+            password: formData.password,
+            macAddress: redirectInfo.mac || null,
+            routerIdentity: redirectInfo.router || null,
           }),
         }
       );
@@ -86,6 +99,23 @@ export default function SignupPage() {
 
       if (!response.ok) {
         throw new Error(data.message || 'Signup failed');
+      }
+
+      console.log('✅ Signup successful:', { username: formData.username, mac: redirectInfo.mac });
+
+      // Store password in localStorage for silent WiFi login after payment
+      // Password is only stored on user's device, never transmitted after signup
+      // It will be used to auto-login to MikroTik hotspot after payment confirmation
+      if (redirectInfo.mac || redirectInfo.router || redirectInfo.link_login) {
+        console.log('📱 Storing WiFi session data for silent login...');
+        localStorage.setItem('wifiSessionPassword', formData.password);
+        localStorage.setItem('wifiSessionUsername', formData.username);
+        if (redirectInfo.router) localStorage.setItem('wifiRouter', redirectInfo.router);
+        if (redirectInfo.mac) localStorage.setItem('wifiMac', redirectInfo.mac);
+        if (redirectInfo.ip) localStorage.setItem('wifiUserIp', redirectInfo.ip);
+        if (redirectInfo.link_login) localStorage.setItem('wifiLinkLogin', redirectInfo.link_login);
+        if (redirectInfo.link_orig) localStorage.setItem('wifiLinkOrig', redirectInfo.link_orig);
+        console.log('✅ WiFi session data stored locally');
       }
 
       // Handle both response formats

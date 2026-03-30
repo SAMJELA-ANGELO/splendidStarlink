@@ -9,13 +9,13 @@ import { apiFetchGet } from "@/lib/api-client";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { login, isLoading: authLoading, isAuthenticated, setUserIp } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [redirectInfo, setRedirectInfo] = useState<{ tab?: string; plan?: string; name?: string; mac?: string; router?: string }>({});
+  const [redirectInfo, setRedirectInfo] = useState<{ tab?: string; plan?: string; name?: string; mac?: string; router?: string; ip?: string }>({});
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -31,16 +31,23 @@ export default function LoginPage() {
     const plan = urlParams.get('plan');
     const name = urlParams.get('name');
     const mac = urlParams.get('mac');
-    const router = urlParams.get('router');
+    const routerParam = urlParams.get('router');
+    const ip = urlParams.get('ip');
     
-    if (redirect || plan || name || mac || router) {
+    if (redirect || plan || name || mac || routerParam || ip) {
       setRedirectInfo({ 
         tab: redirect || '', 
         plan: plan || '', 
         name: name || '',
         mac: mac || '',
-        router: router || ''
+        router: routerParam || '',
+        ip: ip || ''
       });
+      
+      // Log captured WiFi info for debugging
+      if (mac || routerParam || ip) {
+        console.log('📱 WiFi Portal Info Captured:', { mac, router: routerParam, ip });
+      }
     }
   }, []);
 
@@ -50,7 +57,27 @@ export default function LoginPage() {
     setError("");
 
     try {
-      await login(username, password, redirectInfo.mac, redirectInfo.router);
+      // Determine if this is a WiFi login based on captured parameters
+      const isWifiLogin = !!(redirectInfo.mac || redirectInfo.router || redirectInfo.ip);
+      
+      console.log('🔐 Login attempt:', { 
+        username, 
+        isWifiLogin, 
+        hasMac: !!redirectInfo.mac, 
+        hasRouter: !!redirectInfo.router,
+        hasIp: !!redirectInfo.ip 
+      });
+
+      await login(username, password, redirectInfo.mac, redirectInfo.router, isWifiLogin);
+
+      // Store password for silent authentication (used during payment)
+      localStorage.setItem('wifiSessionPassword', password);
+      localStorage.setItem('wifiSessionUsername', username);
+
+      // Store IP if captured from WiFi portal
+      if (redirectInfo.ip) {
+        setUserIp(redirectInfo.ip);
+      }
 
       // Check if user has active session
       try {
@@ -65,7 +92,29 @@ export default function LoginPage() {
         // Continue to dashboard if session check fails
       }
 
-      // Redirect based on URL parameters or default to dashboard
+      // For WiFi logins, check plan status and redirect accordingly
+      if (isWifiLogin) {
+        try {
+          const userProfile = await apiFetchGet('/users/profile');
+          const hasActivePlan = userProfile.isActive && userProfile.sessionExpiry && new Date(userProfile.sessionExpiry) > new Date();
+          
+          if (hasActivePlan) {
+            // Active plan - redirect to connection status (WiFi should be working)
+            console.log('✅ User has active plan, redirecting to connection status');
+            router.push('/connection-status');
+          } else {
+            // No active plan - redirect to plans page for renewal
+            console.log('⚠️ User has no active plan, redirecting to plans');
+            router.push('/dashboard?tab=bundles');
+          }
+          return;
+        } catch (profileErr) {
+          console.warn('Could not fetch user profile:', profileErr);
+          // Fall back to dashboard
+        }
+      }
+
+      // Regular login - redirect based on URL parameters or default to dashboard
       if (redirectInfo.tab === 'bundles') {
         router.push('/dashboard?tab=bundles');
       } else {

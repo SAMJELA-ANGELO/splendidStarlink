@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetchGet, apiFetchPost } from "@/lib/api-client";
+import { PaymentStatusMonitor } from "@/components/PaymentStatusMonitor";
 
 interface Plan {
   _id: string;
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -107,9 +109,11 @@ export default function DashboardPage() {
         name: user?.username || "User",
       });
 
-      alert(
-        `Payment initiated! Transaction ID: ${response.transId}. Please complete payment on your mobile device.`
-      );
+      console.log('💳 Payment initiated:', response);
+      console.log('   Transaction ID:', response.transId);
+
+      // Set the transaction ID to trigger PaymentStatusMonitor
+      setActiveTransactionId(response.transId);
       setShowPaymentForm(null);
       setPhoneNumber("");
     } catch (err) {
@@ -483,6 +487,31 @@ export default function DashboardPage() {
         return null;
     }
   };
+
+  // Show payment status monitor if payment was initiated
+  if (activeTransactionId) {
+    return (
+      <PaymentStatusMonitor
+        transactionId={activeTransactionId}
+        onPaymentSuccess={(data) => {
+          console.log('✅ Payment success callback triggered');
+          // Clear transaction ID and reset to dashboard
+          setTimeout(() => {
+            setActiveTransactionId(null);
+            setActiveTab('overview');
+          }, 3000); // Give silent login time to complete
+        }}
+        onPaymentFailed={(error) => {
+          console.error('❌ Payment failed:', error);
+          // Give user option to try again
+          setTimeout(() => {
+            setActiveTransactionId(null);
+            setActiveTab('bundles');
+          }, 2000);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-amber-900">
