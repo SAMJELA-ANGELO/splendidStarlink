@@ -61,10 +61,10 @@ export function SilentLoginForm({
         passwordToUse = storedPassword;
       }
 
-      // Get WiFi session data from localStorage
+      // Get WiFi session data from localStorage (stored by AuthContext)
       const storedUsername = localStorage.getItem('wifiSessionUsername');
-      const macAddress = localStorage.getItem('wifiMacAddress');
-      const ipAddress = localStorage.getItem('wifiIpAddress');
+      const macAddress = localStorage.getItem('macAddress');
+      const ipAddress = localStorage.getItem('userIp');
 
       console.log('📱 SilentLoginForm: Retrieved WiFi data:', {
         hasPassword: !!passwordToUse,

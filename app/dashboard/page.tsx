@@ -294,8 +294,8 @@ export default function DashboardPage() {
         console.warn('⚠️ Router identity is NULL');
       }
 
-      // Capture user's local IP from localStorage (set by WiFi redirect or connection status)
-      const userIp = localStorage.getItem('wifiIpAddress');
+      // Capture user's local IP from localStorage (set by AuthContext or connection status)
+      const userIp = localStorage.getItem('userIp');
       if (userIp) {
         paymentPayload.userIp = userIp;
         console.log('✅ User IP included in payment:', userIp);

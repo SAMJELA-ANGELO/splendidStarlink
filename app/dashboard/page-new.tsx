@@ -124,7 +124,7 @@ export default function DashboardPage() {
         console.log('✅ Router identity included:', routerIdentity);
       }
 
-      const userIp = localStorage.getItem('wifiIpAddress');
+      const userIp = localStorage.getItem('userIp');
       if (userIp) {
         paymentPayload.userIp = userIp;
         console.log('✅ User IP included:', userIp);
