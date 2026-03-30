@@ -37,52 +37,65 @@ export function PaymentStatusMonitor({
 
   useEffect(() => {
     const pollPaymentStatus = async () => {
+      console.log('💳 ===== PAYMENT STATUS MONITOR POLL START =====');
+      console.log(`💳 Polling payment status: ${transactionId} (attempt ${attemptCount + 1}/${maxAttempts})`);
+
       try {
-        if (attemptCount >= maxAttempts) {
-          setStatus("failed");
-          const msg = "Payment status check timed out. Please verify payment manually on your account.";
-          setErrorMessage(msg);
-          onPaymentFailed?.(msg);
-          return;
-        }
+        const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/payments/status/${transactionId}`;
+        console.log('🔗 Payment status API URL:', apiUrl);
 
-        console.log(`💳 Polling payment status: ${transactionId} (attempt ${attemptCount + 1}/${maxAttempts})`);
+        const response = await fetch(apiUrl);
 
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/payments/status/${transactionId}`
-        );
+        console.log('📡 Payment status API response status:', response.status);
+        console.log('📡 Payment status API response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Payment status API error response:', errorText);
           throw new Error(`Status check failed: ${response.statusText}`);
         }
 
         const data = await response.json();
-        console.log('💳 Payment status response:', data);
+        console.log('💳 Payment status response data:', data);
+        console.log('💳 Payment status:', data.status);
 
         switch (data.status) {
           case 'SUCCESSFUL':
+            console.log('✅ ===== PAYMENT SUCCESSFUL =====');
             console.log('✅ Payment SUCCESSFUL - triggering silent login');
+            console.log('✅ Activation data:', data.activation);
+            console.log('✅ Ready for silent login:', data.activation?.readyForSilentLogin);
+
             setPaymentData(data);
-            
+
             // Store duration for silent login
             if (data.activation?.plan?.duration) {
               localStorage.setItem('wifiSessionDuration', data.activation.plan.duration.toString());
               console.log(`⏱️ Stored session duration: ${data.activation.plan.duration} hours`);
             }
-            
+
+            // Store username for silent login
+            if (data.activation?.username) {
+              localStorage.setItem('wifiSessionUsername', data.activation.username);
+              console.log(`👤 Stored username for silent login: ${data.activation.username}`);
+            }
+
             setStatus('success');
+            console.log('✅ ===== PAYMENT STATUS MONITOR SUCCESS =====');
             onPaymentSuccess?.(data);
             break;
 
           case 'FAILED':
-            console.error('❌ Payment FAILED');
+            console.error('❌ ===== PAYMENT FAILED =====');
+            console.error('❌ Payment FAILED - reason:', data.message);
             setStatus('failed');
             setErrorMessage(data.message || 'Payment was declined by the provider');
             onPaymentFailed?.(data.message || 'Payment failed');
             break;
 
           case 'EXPIRED':
-            console.warn('⏱️ Payment EXPIRED');
+            console.warn('⏱️ ===== PAYMENT EXPIRED =====');
+            console.warn('⏱️ Payment EXPIRED - request expired');
             setStatus('failed');
             setErrorMessage('Payment request has expired. Please initiate a new payment.');
             onPaymentFailed?.('Payment expired');
@@ -91,16 +104,21 @@ export function PaymentStatusMonitor({
           case 'pending':
           case 'created':
             // Still pending, continue polling
-            console.log(`⏳ Payment still ${data.status}, will check again...`);
+            console.log(`⏳ Payment still ${data.status}, will check again in ${pollInterval}ms...`);
+            console.log('⏳ ===== PAYMENT STATUS MONITOR CONTINUE POLLING =====');
             setAttemptCount(prev => prev + 1);
             break;
 
           default:
+            console.log(`❓ ===== UNKNOWN PAYMENT STATUS =====`);
             console.log(`❓ Unknown payment status: ${data.status}`);
+            console.log('❓ Full response data:', data);
             setAttemptCount(prev => prev + 1);
         }
       } catch (error: any) {
+        console.error('❌ ===== PAYMENT STATUS MONITOR ERROR =====');
         console.error('❌ Error checking payment status:', error.message);
+        console.error('❌ Error object:', error);
         // Continue polling on error
         setAttemptCount(prev => prev + 1);
       }
@@ -108,6 +126,7 @@ export function PaymentStatusMonitor({
 
     // Only set up polling if we haven't reached a terminal state
     if (status === 'checking' && attemptCount < maxAttempts) {
+      console.log(`⏰ Setting up next poll in ${pollInterval}ms...`);
       const timer = setTimeout(pollPaymentStatus, pollInterval);
       return () => clearTimeout(timer);
     }
@@ -143,15 +162,22 @@ export function PaymentStatusMonitor({
 
   if (status === 'success' && paymentData?.activation?.readyForSilentLogin) {
     // Payment successful and ready for silent WiFi login
+    console.log('🔐 ===== RENDERING SILENT LOGIN FORM =====');
+    console.log('🔐 Payment data for silent login:', paymentData);
+    console.log('🔐 Username for silent login:', paymentData.activation.username);
+
     return (
       <SilentLoginForm
         username={paymentData.activation.username}
         onSuccess={() => {
-          console.log('✅ Silent login successful!');
+          console.log('✅ ===== SILENT LOGIN SUCCESS =====');
+          console.log('✅ Silent login successful! User should now have internet access.');
           // Could redirect to dashboard or wait for MikroTik redirect
         }}
         onError={(error) => {
+          console.error('❌ ===== SILENT LOGIN ERROR =====');
           console.error('❌ Silent login error:', error);
+          console.error('❌ Error details:', error);
           setStatus('failed');
           setErrorMessage(`Silent login failed: ${error}`);
         }}

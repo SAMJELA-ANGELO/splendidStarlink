@@ -90,6 +90,7 @@ export default function SignupPage() {
             username: formData.username, 
             password: formData.password,
             macAddress: redirectInfo.mac || null,
+            ipAddress: redirectInfo.ip || null,
             routerIdentity: redirectInfo.router || null,
           }),
         }

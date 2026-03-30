@@ -41,94 +41,100 @@ export function SilentLoginForm({
 
   useEffect(() => {
     const performSilentLogin = async () => {
-      try {
-        console.log('🔐 SilentLoginForm: Starting API-based silent login process...');
-        console.log(`   Mode: ${isTemporaryLogin ? 'MAC Login (Temp Password)' : 'Signup (Stored Password)'}`);
+      console.log('🔐 ===== SILENT LOGIN FORM START =====');
+      console.log('🔐 SilentLoginForm: Starting API-based silent login process...');
+      console.log(`🔐 Mode: ${isTemporaryLogin ? 'MAC Login (Temp Password)' : 'Signup (Stored Password)'}`);
 
-        // Determine password source based on login mode
-        let passwordToUse = tempPassword;
-        if (!passwordToUse) {
-          // Signup mode: try to get from localStorage
-          const storedPassword = localStorage.getItem('wifiSessionPassword');
-          if (!storedPassword) {
-            const errorMsg = 'Password not found for silent login';
-            console.warn('⚠️ SilentLoginForm:', errorMsg);
-            setStatus('error');
-            setErrorMessage(errorMsg);
-            onError?.(errorMsg);
-            return;
-          }
-          passwordToUse = storedPassword;
+      // Determine password source based on login mode
+      let passwordToUse = tempPassword;
+      if (!passwordToUse) {
+        // Signup mode: try to get from localStorage
+        const storedPassword = localStorage.getItem('wifiSessionPassword');
+        if (!storedPassword) {
+          const errorMsg = 'Password not found for silent login';
+          console.warn('⚠️ SilentLoginForm:', errorMsg);
+          setStatus('error');
+          setErrorMessage(errorMsg);
+          onError?.(errorMsg);
+          return;
         }
+        passwordToUse = storedPassword;
+      }
 
-        // Get WiFi session data from localStorage
-        const storedUsername = localStorage.getItem('wifiSessionUsername');
-        const macAddress = localStorage.getItem('wifiMacAddress');
-        const ipAddress = localStorage.getItem('wifiIpAddress');
+      // Get WiFi session data from localStorage
+      const storedUsername = localStorage.getItem('wifiSessionUsername');
+      const macAddress = localStorage.getItem('wifiMacAddress');
+      const ipAddress = localStorage.getItem('wifiIpAddress');
 
-        console.log('📱 SilentLoginForm: Retrieved WiFi data:', {
-          hasPassword: !!passwordToUse,
-          storedUsername: storedUsername,
-          macAddress: macAddress,
-          ipAddress: ipAddress
+      console.log('📱 SilentLoginForm: Retrieved WiFi data:', {
+        hasPassword: !!passwordToUse,
+        storedUsername: storedUsername,
+        macAddress: macAddress,
+        ipAddress: ipAddress
+      });
+
+      // Use provided username or stored username
+      const finalUsername = username || storedUsername;
+
+      // Check required data
+      if (!finalUsername) {
+        const errorMsg = 'Username not found for silent login';
+        console.warn('⚠️ SilentLoginForm:', errorMsg);
+        setStatus('error');
+        setErrorMessage(errorMsg);
+        onError?.(errorMsg);
+        return;
+      }
+
+      if (!macAddress || !ipAddress) {
+        const errorMsg = 'MAC address or IP address not found. User may need to connect to WiFi first.';
+        console.warn('⚠️ SilentLoginForm:', errorMsg);
+        setStatus('error');
+        setErrorMessage(errorMsg);
+        onError?.(errorMsg);
+        return;
+      }
+
+      // Get duration from localStorage (set during payment/signup)
+      const durationHours = parseInt(localStorage.getItem('wifiSessionDuration') || '24');
+      console.log('⏱️ SilentLoginForm: Session duration:', durationHours, 'hours');
+
+      console.log('🚀 SilentLoginForm: Calling backend silent login API...');
+      console.log('   👤 Username:', finalUsername);
+      console.log('   📍 MAC:', macAddress);
+      console.log('   🌐 IP:', ipAddress);
+      console.log('   ⏱️ Duration:', durationHours, 'hours');
+
+      // Call backend API for silent login
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/auth/silent-login`;
+      console.log('🔗 API URL:', apiUrl);
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: finalUsername,
+            password: passwordToUse,
+            macAddress,
+            ipAddress,
+            durationHours,
+          }),
         });
 
-        // Use provided username or stored username
-        const finalUsername = username || storedUsername;
-
-        // Check required data
-        if (!finalUsername) {
-          const errorMsg = 'Username not found for silent login';
-          console.warn('⚠️ SilentLoginForm:', errorMsg);
-          setStatus('error');
-          setErrorMessage(errorMsg);
-          onError?.(errorMsg);
-          return;
-        }
-
-        if (!macAddress || !ipAddress) {
-          const errorMsg = 'MAC address or IP address not found. User may need to connect to WiFi first.';
-          console.warn('⚠️ SilentLoginForm:', errorMsg);
-          setStatus('error');
-          setErrorMessage(errorMsg);
-          onError?.(errorMsg);
-          return;
-        }
-
-        // Get duration from localStorage (set during payment/signup)
-        const durationHours = parseInt(localStorage.getItem('wifiSessionDuration') || '24');
-        
-        console.log('🚀 SilentLoginForm: Calling backend silent login API...');
-        console.log('   👤 Username:', finalUsername);
-        console.log('   📍 MAC:', macAddress);
-        console.log('   🌐 IP:', ipAddress);
-        console.log('   ⏱️ Duration:', durationHours, 'hours');
-
-        // Call backend API for silent login
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/auth/silent-login`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              username: finalUsername,
-              password: passwordToUse,
-              macAddress,
-              ipAddress,
-              durationHours,
-            }),
-          }
-        );
+        console.log('📡 API Response status:', response.status);
+        console.log('📡 API Response headers:', Object.fromEntries(response.headers.entries()));
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          console.error('❌ API Error response:', errorData);
           throw new Error(errorData.message || `Silent login failed: ${response.statusText}`);
         }
 
         const result = await response.json();
-        console.log('✅ SilentLoginForm: Silent login successful!', result);
+        console.log('✅ SilentLoginForm: Silent login API response:', result);
 
         // Clear sensitive data
         if (!isTemporaryLogin) {
@@ -138,10 +144,13 @@ export function SilentLoginForm({
         }
 
         setStatus('success');
+        console.log('🔐 ===== SILENT LOGIN FORM SUCCESS =====');
         onSuccess?.();
 
       } catch (error: any) {
-        console.error('❌ SilentLoginForm: Silent login failed:', error.message);
+        console.error('❌ ===== SILENT LOGIN FORM FAILED =====');
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error object:', error);
         setStatus('error');
         setErrorMessage(error.message);
         onError?.(error.message);
