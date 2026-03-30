@@ -12,13 +12,15 @@
         // Capture all MikroTik variables needed for session management
         
         var mac = "$(mac-esc)";           // Client MAC address
-        var clientIp = "$(ip)";  // Client IP address
+        var rawIp = "$(ip)" || "$(client-ip)";  // MikroTik may provide either ip or client-ip variable
+        var clientIp = rawIp || "";
         var routerId = "$(identity)";     // Router identity
         var linkLogin = "$(link-login-only)"; // Auto-login endpoint
         var linkOrig = "$(link-orig)";    // Original destination
         
         console.log('🌐 MikroTik Captive Portal:', {
             mac: mac,
+            rawIp: rawIp,
             clientIp: clientIp,
             routerId: routerId,
             hasLinkLogin: !!linkLogin,
@@ -33,7 +35,8 @@
             "&link_login=" + encodeURIComponent(linkLogin) +
             "&link_orig=" + encodeURIComponent(linkOrig);
         
-        console.log('📡 Redirecting to frontend:', redirectUrl.substring(0, 80) + '...');
+        console.log('📡 Redirecting to frontend:', redirectUrl);
+        console.log('📡 Redirect payload', { mac, ip: clientIp, routerId, link_login: linkLogin, link_orig: linkOrig });
         
         // Redirect to Netlify frontend
         window.location.href = redirectUrl;
@@ -56,9 +59,9 @@
         <script>
             // Display captured variables for debugging
             document.getElementById('debug-mac').textContent = 'MAC: ' + (mac || 'Not captured');
-            document.getElementById('debug-ip').textContent = 'IP: ' + (clientIp || 'Not captured');
-            document.getElementById('debug-router').textContent = 'Router: ' + (routerId || 'Not captured');
-            document.getElementById('debug-login-link').textContent = 'Login Link: ' + (linkLogin ? 'Available' : 'Not available');
+        document.getElementById('debug-ip').textContent = 'IP: ' + (clientIp || 'Not captured') + (rawIp && rawIp !== clientIp ? ' (fallback=' + rawIp + ')' : '');
+        document.getElementById('debug-router').textContent = 'Router: ' + (routerId || 'Not captured');
+        document.getElementById('debug-login-link').textContent = 'Login Link: ' + (linkLogin ? 'Available' : 'Not available');
         </script>
     </div>
     

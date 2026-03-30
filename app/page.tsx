@@ -73,8 +73,9 @@ function HomeContent() {
           <h1 className="text-3xl font-bold text-amber-900 mb-2">Welcome to Splendid StarLink</h1>
           <p className="text-gray-600 mb-8">You're connected to our WiFi network. Please log in to access the internet.</p>
           
-          <div className="bg-amber-50 rounded-lg p-4 mb-6 text-left">
-            <p className="text-sm text-gray-700 mb-2"><span className="font-semibold">Device MAC:</span> {wifiInfo.mac ? `${wifiInfo.mac.slice(0, 12)}...` : 'Unknown'}</p>
+          <div className="bg-amber-50 rounded-lg p-4 mb-6 text-left space-y-2">
+            <p className="text-sm text-gray-700"><span className="font-semibold">Device MAC:</span> {wifiInfo.mac ? `${wifiInfo.mac.slice(0, 12)}...` : 'Unknown'}</p>
+            <p className="text-sm text-gray-700"><span className="font-semibold">Device IP:</span> {wifiInfo.ip || 'Unknown'}</p>
             <p className="text-sm text-gray-700"><span className="font-semibold">Router:</span> {wifiInfo.router_id || 'Unknown'}</p>
           </div>
 
