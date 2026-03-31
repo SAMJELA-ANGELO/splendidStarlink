@@ -9,7 +9,7 @@ import { setToken, setStoredUser } from "@/lib/api-client";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { login, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { login, isLoading: authLoading, isAuthenticated, setUser } = useAuth();
   const [formData, setFormData] = useState({
     username: "",
     password: "",
@@ -143,6 +143,7 @@ export default function SignupPage() {
         // Store token and user immediately
         setToken(newToken);
         setStoredUser(newUser);
+        setUser(newUser); // Update AuthContext state
         
         // Store portal data in localStorage for payment/redemption flow
         if (redirectInfo.mac || redirectInfo.link_login) {
@@ -175,8 +176,9 @@ export default function SignupPage() {
           router.push('/dashboard?tab=bundles');
           return;
         } catch (loginError) {
-          // If auto-login fails, redirect to login page for user to manually login
-          router.push(`/auth/login?redirect=dashboard&username=${formData.username}`);
+          // If auto-login fails, continue to dashboard to keep captive flow
+          console.warn('Auto-login failed after signup, redirecting to dashboard anyway.', loginError);
+          router.push('/dashboard?tab=bundles');
           return;
         }
       }
