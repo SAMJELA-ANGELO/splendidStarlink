@@ -1248,10 +1248,8 @@ export default function DashboardPage() {
           transactionId={activeTransactionId}
           onPaymentSuccess={(data) => {
             console.log('✅ Payment successful, user activated:', data);
-            addToast('🎉 Payment successful! Your internet is now active.', 'success', 5000);
+            addToast('🎉 Payment successful! Redirecting to captive portal for normal login.', 'success', 5000);
             setActiveTransactionId(null);
-            // Refresh dashboard data
-            window.location.reload();
           }}
           onPaymentFailed={(error) => {
             console.error('❌ Payment failed:', error);

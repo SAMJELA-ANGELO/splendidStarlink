@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { SilentLoginForm } from "@/components/SilentLoginForm";
 
 interface PaymentStatusMonitorProps {
   transactionId: string;
@@ -132,6 +131,23 @@ export function PaymentStatusMonitor({
     }
   }, [transactionId, status, attemptCount, pollInterval, maxAttempts, onPaymentSuccess, onPaymentFailed]);
 
+  // On successful payment, redirect to captive portal login page (or fallback to /auth/login)
+  useEffect(() => {
+    if (status === 'success') {
+      const captivePortalUrl =
+        localStorage.getItem('wifiLinkLogin') ||
+        localStorage.getItem('wifiLinkOrig') ||
+        '/auth/login';
+
+      console.log('🌐 Redirecting to captive portal landing page:', captivePortalUrl);
+      const timer = setTimeout(() => {
+        window.location.href = captivePortalUrl;
+      }, 2500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
+
   // Render different states
   if (status === 'checking') {
     return (
@@ -160,57 +176,31 @@ export function PaymentStatusMonitor({
     );
   }
 
-  if (status === 'success' && paymentData?.activation?.readyForSilentLogin) {
-    // Payment successful and ready for silent WiFi login
-    console.log('🔐 ===== RENDERING SILENT LOGIN FORM =====');
-    console.log('🔐 Payment data for silent login:', paymentData);
-    console.log('🔐 Username for silent login:', paymentData.activation.username);
-
-    return (
-      <SilentLoginForm
-        username={paymentData.activation.username}
-        onSuccess={() => {
-          console.log('✅ ===== SILENT LOGIN SUCCESS =====');
-          console.log('✅ Silent login successful! User should now have internet access.');
-          // Could redirect to dashboard or wait for MikroTik redirect
-        }}
-        onError={(error) => {
-          console.error('❌ ===== SILENT LOGIN ERROR =====');
-          console.error('❌ Silent login error:', error);
-          console.error('❌ Error details:', error);
-          setStatus('failed');
-          setErrorMessage(`Silent login failed: ${error}`);
-        }}
-      />
-    );
-  }
-
   if (status === 'success') {
-    // Payment successful but no silent login (gift flow or other reason)
+    const captivePortalUrl =
+      localStorage.getItem('wifiLinkLogin') ||
+      localStorage.getItem('wifiLinkOrig') ||
+      '/auth/login';
+
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
         <CheckCircle2 className="h-16 w-16 text-green-500 mb-6" />
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Successful!</h2>
         <p className="text-gray-600 text-center mb-6">
-          {paymentData?.activation?.message || 'Your payment has been processed successfully.'}
+          {paymentData?.activation?.message || 'Your plan is activated. Redirecting you to your WiFi portal for normal login...'}
         </p>
 
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-w-sm text-center mb-8">
-          <p className="text-sm text-green-800 mb-2">
-            ✅ Your account is now active
+          <p className="text-sm text-green-800">
+            If redirect does not start automatically, click the button below.
           </p>
-          {paymentData?.activation?.sessionExpiry && (
-            <p className="text-xs text-green-700">
-              Session expires: {new Date(paymentData.activation.sessionExpiry).toLocaleString()}
-            </p>
-          )}
         </div>
 
         <a
-          href="/dashboard"
+          href={captivePortalUrl}
           className="bg-amber-700 hover:bg-amber-800 text-white font-semibold px-6 py-3 rounded-lg transition"
         >
-          Go to Dashboard
+          Go to Captive Portal
         </a>
       </div>
     );

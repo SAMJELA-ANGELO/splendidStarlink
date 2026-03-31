@@ -39,8 +39,9 @@ export default function SignupPage() {
     const ip = urlParams.get('ip');
     const link_login = urlParams.get('link_login');
     const link_orig = urlParams.get('link_orig');
+    const fromCaptivePortal = urlParams.get('fromCaptivePortal');
     
-    if (redirect || plan || name || mac || routerParam || ip || link_login || link_orig) {
+    if (redirect || plan || name || mac || routerParam || ip || link_login || link_orig || fromCaptivePortal) {
       setRedirectInfo({ 
         redirect: redirect || '', 
         plan: plan || '', 
@@ -55,6 +56,18 @@ export default function SignupPage() {
       // Log captured WiFi info for debugging
       if (mac || routerParam || ip || link_login) {
         console.log('📱 WiFi Portal Info Captured (Signup):', { mac, router: routerParam, ip, link_login: !!link_login, link_orig: !!link_orig });
+      }
+
+      // Store captive portal data in localStorage for payment flow
+      if (fromCaptivePortal === 'true') {
+        sessionStorage.setItem('captivePortalRedirect', JSON.stringify({
+          mac,
+          ip,
+          routerId: routerParam,
+          linkLogin: link_login,
+          linkOrig: link_orig
+        }));
+        console.log('✅ Captive portal redirect stored');
       }
     }
   }, []);
@@ -131,9 +144,16 @@ export default function SignupPage() {
         setToken(newToken);
         setStoredUser(newUser);
         
-        // Wait a moment for the context to update, then redirect
+        // Store portal data in localStorage for payment/redemption flow
+        if (redirectInfo.mac || redirectInfo.link_login) {
+          localStorage.setItem('wifiLinkLogin', redirectInfo.link_login || '');
+          localStorage.setItem('wifiLinkOrig', redirectInfo.link_orig || '');
+          console.log('✅ Portal links stored for payment redirect');
+        }
+        
+        // Wait a moment for the context to update, then redirect to dashboard with bundles tab
         setTimeout(() => {
-          router.push('/dashboard');
+          router.push('/dashboard?tab=bundles');
         }, 100);
         return;
       }
@@ -143,8 +163,16 @@ export default function SignupPage() {
         try {
           // Use auth context login to properly store token
           await login(formData.username, formData.password, redirectInfo.mac, redirectInfo.router);
-          // Login function will internally redirect or we redirect here
-          router.push('/dashboard');
+          
+          // Store portal data in localStorage for payment/redemption flow
+          if (redirectInfo.mac || redirectInfo.link_login) {
+            localStorage.setItem('wifiLinkLogin', redirectInfo.link_login || '');
+            localStorage.setItem('wifiLinkOrig', redirectInfo.link_orig || '');
+            console.log('✅ Portal links stored for payment redirect');
+          }
+          
+          // Redirect to dashboard bundles tab for user to purchase
+          router.push('/dashboard?tab=bundles');
           return;
         } catch (loginError) {
           // If auto-login fails, redirect to login page for user to manually login
