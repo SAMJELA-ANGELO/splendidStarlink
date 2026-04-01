@@ -132,18 +132,13 @@ export default function SignupPage() {
       }
 
       // Handle both response formats
-      let newToken = null;
-      let newUser = null;
-
-      // Format 1: { data: { token, access_token, user } } - from login result in register
-      if (data.data?.access_token || data.data?.token) {
-        newToken = data.data.access_token || data.data.token;
-        newUser = data.data.user;
+      // Always use login() to properly update AuthContext state
+      // This ensures token and user are synchronized in context
+      try {
+        console.log('🔐 Logging in after signup to update AuthContext...');
+        await login(formData.username, formData.password, redirectInfo.mac, redirectInfo.router);
         
-        // Store token and user immediately
-        setToken(newToken);
-        setStoredUser(newUser);
-        setUser(newUser); // Update AuthContext state
+        console.log('✅ Login after signup successful');
         
         // Store portal data in localStorage for payment/redemption flow
         if (redirectInfo.mac || redirectInfo.link_login) {
@@ -152,35 +147,21 @@ export default function SignupPage() {
           console.log('✅ Portal links stored for payment redirect');
         }
         
-        // Wait a moment for the context to update, then redirect to dashboard with bundles tab
+        // Redirect to dashboard bundles tab for user to purchase
+        // Use a longer delay (500ms) to ensure context fully updates before dashboard loads
+        setTimeout(() => {
+          console.log('🚀 Redirecting to dashboard after signup+login');
+          router.push('/dashboard?tab=bundles');
+        }, 500);
+        return;
+      } catch (err) {
+        console.warn('⚠️ Login after signup failed, but signup was successful');
+        // If login fails after signup, this is unusual but continue to dashboard anyway
+        // The user registered successfully, they just need to complete the auth flow
         setTimeout(() => {
           router.push('/dashboard?tab=bundles');
-        }, 100);
+        }, 500);
         return;
-      }
-      // Format 2: { user, message, success } - fallback to login function
-      else if (data.user && data.success) {
-        newUser = data.user;
-        try {
-          // Use auth context login to properly store token
-          await login(formData.username, formData.password, redirectInfo.mac, redirectInfo.router);
-          
-          // Store portal data in localStorage for payment/redemption flow
-          if (redirectInfo.mac || redirectInfo.link_login) {
-            localStorage.setItem('wifiLinkLogin', redirectInfo.link_login || '');
-            localStorage.setItem('wifiLinkOrig', redirectInfo.link_orig || '');
-            console.log('✅ Portal links stored for payment redirect');
-          }
-          
-          // Redirect to dashboard bundles tab for user to purchase
-          router.push('/dashboard?tab=bundles');
-          return;
-        } catch (loginError) {
-          // If auto-login fails, continue to dashboard to keep captive flow
-          console.warn('Auto-login failed after signup, redirecting to dashboard anyway.', loginError);
-          router.push('/dashboard?tab=bundles');
-          return;
-        }
       }
 
       throw new Error('Invalid signup response - no user data');

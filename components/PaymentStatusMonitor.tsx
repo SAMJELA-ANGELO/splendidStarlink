@@ -33,6 +33,7 @@ export function PaymentStatusMonitor({
   const [paymentData, setPaymentData] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [attemptCount, setAttemptCount] = useState(0);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     const pollPaymentStatus = async () => {
@@ -134,17 +135,42 @@ export function PaymentStatusMonitor({
   // On successful payment, redirect to captive portal login page (or fallback to /auth/login)
   useEffect(() => {
     if (status === 'success') {
+      const wifiLinkLogin = localStorage.getItem('wifiLinkLogin');
+      const wifiLinkOrig = localStorage.getItem('wifiLinkOrig');
+      
       const captivePortalUrl =
-        localStorage.getItem('wifiLinkLogin') ||
-        localStorage.getItem('wifiLinkOrig') ||
+        wifiLinkLogin ||
+        wifiLinkOrig ||
         '/auth/login';
 
-      console.log('🌐 Redirecting to captive portal landing page:', captivePortalUrl);
-      const timer = setTimeout(() => {
-        window.location.href = captivePortalUrl;
-      }, 2500);
+      console.log('🌐 ===== PAYMENT SUCCESS REDIRECT =====');
+      console.log('🌐 wifiLinkLogin from localStorage:', wifiLinkLogin);
+      console.log('🌐 wifiLinkOrig from localStorage:', wifiLinkOrig);
+      console.log('🌐 Final captive portal URL:', captivePortalUrl);
+      console.log('🌐 Will redirect in 2 seconds...');
 
-      return () => clearTimeout(timer);
+      // Start countdown
+      setRedirectCountdown(2);
+      const countdownInterval = setInterval(() => {
+        setRedirectCountdown(prev => prev !== null && prev > 0 ? prev - 1 : null);
+      }, 1000);
+
+      const timer = setTimeout(() => {
+        console.log('🌐 ===== EXECUTING REDIRECT =====');
+        console.log('🌐 Redirecting to:', captivePortalUrl);
+        clearInterval(countdownInterval);
+        try {
+          window.location.href = captivePortalUrl;
+        } catch (error) {
+          console.error('🌐 ===== REDIRECT FAILED =====');
+          console.error('🌐 Error redirecting to captive portal:', error);
+        }
+      }, 2000);
+
+      return () => {
+        clearTimeout(timer);
+        clearInterval(countdownInterval);
+      };
     }
   }, [status]);
 
@@ -190,9 +216,20 @@ export function PaymentStatusMonitor({
           {paymentData?.activation?.message || 'Your plan is activated. Redirecting you to your WiFi portal for normal login...'}
         </p>
 
+        {redirectCountdown !== null && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-sm text-center mb-4">
+            <p className="text-sm text-blue-800">
+              Redirecting in {redirectCountdown} second{redirectCountdown !== 1 ? 's' : ''}...
+            </p>
+          </div>
+        )}
+
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-w-sm text-center mb-8">
-          <p className="text-sm text-green-800">
+          <p className="text-sm text-green-800 mb-2">
             If redirect does not start automatically, click the button below.
+          </p>
+          <p className="text-xs text-green-700">
+            Or use your browser's back button to return to the captive portal.
           </p>
         </div>
 
