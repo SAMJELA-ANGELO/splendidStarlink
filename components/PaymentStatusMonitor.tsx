@@ -24,6 +24,8 @@ interface PaymentStatusMonitorProps {
   onPaymentSuccess?: (data: PaymentData) => void;
   onPaymentFailed?: (error: string) => void;
   onRedirect?: () => void;
+  onCancel?: () => void;
+  routerIdentity?: string;
   pollInterval?: number;
   maxAttempts?: number;
 }
@@ -37,10 +39,13 @@ export function PaymentStatusMonitor({
   onPaymentSuccess,
   onPaymentFailed,
   onRedirect,
+  onCancel,
+  routerIdentity,
   pollInterval = 3000,
   maxAttempts = 40,
 }: PaymentStatusMonitorProps) {
   const [status, setStatus] = useState<'CHECKING' | 'SUCCESSFUL' | 'FAILED' | null>(null);
+  const [isCancelled, setIsCancelled] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [countdown, setCountdown] = useState(5);
@@ -48,7 +53,7 @@ export function PaymentStatusMonitor({
 
   // Main polling effect
   useEffect(() => {
-    if (status !== null || attemptCount >= maxAttempts) {
+    if (status !== null || attemptCount >= maxAttempts || isCancelled) {
       return; 
     }
 
@@ -141,14 +146,17 @@ export function PaymentStatusMonitor({
   }, [status, attemptCount, maxAttempts, transactionId, pollInterval, onPaymentSuccess, onPaymentFailed]);
 
   const redirectToMikroTikLogin = useCallback(() => {
-    // Use the default MikroTik captive portal URL
-    const url = 'http://tata.org/login';
+    const activeRouter =
+      (paymentData?.activation as any)?.activeRouter || routerIdentity || 'Home';
+    const routerKey = activeRouter.toString().toLowerCase();
+    const url = routerKey.includes('school') || routerKey.includes('com')
+      ? 'http://com.org/login'
+      : 'http://tata.org/login';
 
-    console.log('🔄 Redirecting to:', url);
+    console.log('🔄 Redirecting to:', url, 'for router hint:', activeRouter);
     window.location.href = url;
-    // Call onRedirect callback after redirect
     setTimeout(() => onRedirect?.(), 100);
-  }, [onRedirect]);
+  }, [onRedirect, paymentData?.activation, routerIdentity]);
 
   // Countdown effect
   useEffect(() => {
@@ -179,6 +187,13 @@ export function PaymentStatusMonitor({
 
   // CHECKING STATE
   if (status === null) {
+    const handleCancel = () => {
+      if (isCancelled) return;
+      setIsCancelled(true);
+      console.log('🛑 Payment monitoring cancelled by user');
+      onCancel?.();
+    };
+
     return (
       <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
@@ -189,8 +204,15 @@ export function PaymentStatusMonitor({
             <h2 className="text-3xl font-bold text-white">Processing Payment</h2>
           </div>
           <div className="p-8 text-center">
-            <p className="text-gray-600 mb-6">Verifying with Fapshi...</p>
-            <p className="text-sm text-gray-500">Attempt {attemptCount + 1} of {maxAttempts}</p>
+            <p className="text-gray-600 mb-4">Verifying with Fapshi...</p>
+            <p className="text-sm text-gray-500 mb-6">Attempt {attemptCount + 1} of {maxAttempts}</p>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="inline-flex items-center justify-center px-5 py-3 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              Cancel payment
+            </button>
           </div>
         </div>
       </div>

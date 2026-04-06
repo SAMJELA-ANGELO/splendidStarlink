@@ -1442,6 +1442,7 @@ export default function DashboardPage() {
           planDuration={activePlanDuration ?? undefined}
           recipientUsername={activeGiftDetails?.recipientUsername}
           recipientPassword={activeGiftDetails?.recipientPassword}
+          routerIdentity={routerIdentity ?? undefined}
           onPaymentSuccess={(data) => {
             console.log('✅ Payment successful, user activated:', data);
             if (activePaymentVariant === 'gift') {
@@ -1463,6 +1464,13 @@ export default function DashboardPage() {
           onRedirect={() => {
             console.log('🔄 Payment monitor redirect/close complete, unmounting component');
             setActiveTransactionId(null); // Unmount after redirect or gift close
+            setActivePaymentVariant(null);
+            setActiveGiftDetails(null);
+            setActivePlanDuration(null);
+          }}
+          onCancel={() => {
+            addToast('Payment monitoring cancelled. Please retry if needed.', 'info');
+            setActiveTransactionId(null);
             setActivePaymentVariant(null);
             setActiveGiftDetails(null);
             setActivePlanDuration(null);
