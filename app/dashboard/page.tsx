@@ -20,7 +20,8 @@ import {
   X,
   Gift,
   ShoppingBag,
-  Loader2
+  Loader2,
+  RefreshCw
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -121,6 +122,12 @@ export default function DashboardPage() {
   const [activityStatsLoading, setActivityStatsLoading] = useState(true);
   const [giftPasswordMode, setGiftPasswordMode] = useState<'generate' | 'manual'>('generate');
   const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null);
+  const [activePaymentVariant, setActivePaymentVariant] = useState<'bundle' | 'gift' | null>(null);
+  const [activeGiftDetails, setActiveGiftDetails] = useState<{ recipientUsername: string; recipientPassword: string } | null>(null);
+  const [activePlanDuration, setActivePlanDuration] = useState<number | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(5000); // 5 seconds
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -128,6 +135,50 @@ export default function DashboardPage() {
       router.push("/auth/login");
     }
   }, [isAuthenticated, authLoading, router]);
+
+  // Capture MikroTik redirect parameters from the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const linkLogin = params.get('link-login');
+    const linkOrig = params.get('link-orig');
+
+    if (linkLogin) localStorage.setItem('wifiLinkLogin', linkLogin);
+    if (linkOrig) localStorage.setItem('wifiLinkOrig', linkOrig);
+  }, []);
+
+  // Fetch session status
+  useEffect(() => {
+    const fetchSessionStatus = async () => {
+      if (!isAuthenticated || !user?.userId) {
+        return;
+      }
+
+      try {
+        setSessionLoading(true);
+        const status = await apiFetchGet<SessionData>('/sessions/status');
+        setSessionData(status);
+        
+        if (status.isActive) {
+          console.log(`✅ Connection active! Time remaining: ${formatRemainingTime(status.remainingTime || 0)}`);
+        } else {
+          console.log(`⚠️ No active connection`);
+        }
+      } catch (err) {
+        console.error('Failed to fetch session status:', err);
+        addToast('Failed to fetch connection status', 'error');
+      } finally {
+        setSessionLoading(false);
+      }
+    };
+
+    fetchSessionStatus();
+
+    // Set up auto-refresh if enabled
+    if (autoRefreshEnabled && sessionData?.isActive) {
+      const interval = setInterval(fetchSessionStatus, refreshInterval);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, user?.userId, autoRefreshEnabled, refreshInterval, sessionData?.isActive]);
 
   // Helper function to map price to plan name
   const getPlanName = (price: number | string): string => {
@@ -139,6 +190,40 @@ export default function DashboardPage() {
       500: "Premium"
     };
     return planMap[priceNum] || `Plan ${priceNum}`;
+  };
+
+  // Format remaining time
+  const formatRemainingTime = (ms: number): string => {
+    if (ms <= 0) return "Expired";
+    
+    const seconds = Math.floor((ms / 1000) % 60);
+    const minutes = Math.floor((ms / (1000 * 60)) % 60);
+    const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+
+    if (days > 0) {
+      return `${days}d ${hours}h`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    } else {
+      return `${seconds}s`;
+    }
+  };
+
+  // Handle refresh session status
+  const handleRefresh = async () => {
+    try {
+      setSessionLoading(true);
+      const status = await apiFetchGet<SessionData>('/sessions/status');
+      setSessionData(status);
+      addToast('✅ Connection status updated', 'success', 2000);
+    } catch (err) {
+      addToast('Failed to refresh connection status', 'error');
+    } finally {
+      setSessionLoading(false);
+    }
   };
 
   // Fetch recent activities, billing, and metrics data
@@ -263,7 +348,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const tab = urlParams.get('tab');
-    if (tab && ['overview', 'connection', 'bundles', 'gift', 'billing'].includes(tab)) {
+    if (tab && ['overview', 'connectivity', 'bundles', 'gift', 'billing'].includes(tab)) {
       setActiveTab(tab);
     }
   }, []);
@@ -368,6 +453,9 @@ export default function DashboardPage() {
       );
 
       // Set transaction ID to trigger PaymentStatusMonitor
+      setActivePaymentVariant('bundle');
+      setActiveGiftDetails(null);
+      setActivePlanDuration(planDuration);
       setActiveTransactionId(response.transId);
       
       setShowPaymentForm(null);
@@ -427,15 +515,22 @@ export default function DashboardPage() {
         setGiftRecipientPassword(recipientPassword);
       }
       
+      // Store the recipient password for the modal to display
+      localStorage.setItem('wifiSessionPassword', recipientPassword);
+      
       const response = await apiFetchPost('/payments/initiate', {
         planId: selectedGiftPlan,
         email: giftRecipientUsername + '@splendidstarlink.com',
         phone: giftPhoneNumber,
         externalId: Date.now().toString(),
         name: giftRecipientUsername,
+        password: recipientPassword,
         isGift: true,
         recipientUsername: giftRecipientUsername,
         userIp: localStorage.getItem('wifiIpAddress') || undefined,
+        // Include WiFi context for gift payments
+        macAddress: macAddress,
+        routerIdentity: routerIdentity,
       });
 
       const selectedPlan = plans.find(p => p._id === selectedGiftPlan);
@@ -456,6 +551,12 @@ export default function DashboardPage() {
         10000
       );
       
+      // Set transaction ID to trigger PaymentStatusMonitor
+      setActivePaymentVariant('gift');
+      setActiveGiftDetails({ recipientUsername: giftRecipientUsername, recipientPassword });
+      setActivePlanDuration(planDuration);
+      setActiveTransactionId(response.transId);
+      
       // Reset form
       setGiftRecipientUsername('');
       setGiftRecipientPassword('');
@@ -463,9 +564,9 @@ export default function DashboardPage() {
       setSelectedGiftPlan(null);
       setGiftPasswordMode('generate');
 
-      // Redirect to connection status after 3 seconds
+      // Switch to connectivity tab after 3 seconds (but don't redirect for gifts)
       setTimeout(() => {
-        router.push('/connection-status');
+        setActiveTab('connectivity');
       }, 3000);
       
     } catch (err) {
@@ -515,7 +616,7 @@ export default function DashboardPage() {
 
   const menuItems = [
     { id: "overview", label: "Overview", icon: Activity },
-    { id: "connection", label: "Connection", icon: Wifi },
+    { id: "connectivity", label: "Connectivity", icon: Wifi },
     { id: "bundles", label: "Browse Bundles", icon: ShoppingBag },
     { id: "gift", label: "Buy for Someone", icon: Gift },
     { id: "billing", label: "Billing", icon: CreditCard }
@@ -669,98 +770,150 @@ export default function DashboardPage() {
           </div>
         );
 
-      case "connection":
+      case "connectivity":
         return (
           <div className="space-y-6">
             <div className="bg-white rounded-lg p-6 border border-amber-900/20 shadow-sm">
-              <h2 className="text-2xl font-bold mb-6 text-amber-900">Connection Details</h2>
-              
-              {metricsLoading ? (
+              <h2 className="text-2xl font-bold mb-6 text-amber-900">Connection Status</h2>
+
+              {sessionLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-amber-700 mr-2" />
-                  <span className="text-amber-700">Loading metrics...</span>
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-amber-700" />
+                  <p className="text-amber-700 font-medium">Checking your connection...</p>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-amber-900">Performance Metrics</h3>
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Download Speed</span>
-                        <span className="font-bold">{connectionMetrics?.metrics?.downloadSpeed?.toFixed(1) || 0} Mbps</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Upload Speed</span>
-                        <span className="font-bold">{connectionMetrics?.metrics?.uploadSpeed?.toFixed(1) || 0} Mbps</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Latency</span>
-                        <span className="font-bold">{connectionMetrics?.metrics?.latency?.toFixed(0) || 0} ms</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Signal Strength</span>
-                        <span className="font-bold">{connectionMetrics?.metrics?.signalStrength?.toFixed(0) || 0}%</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Connection Quality</span>
-                        <span className={`font-bold capitalize ${
-                          connectionMetrics?.metrics?.connectionQuality === 'excellent' ? 'text-green-500' :
-                          connectionMetrics?.metrics?.connectionQuality === 'good' ? 'text-green-400' :
-                          connectionMetrics?.metrics?.connectionQuality === 'fair' ? 'text-yellow-500' : 'text-red-500'
-                        }`}>
-                          {connectionMetrics?.metrics?.connectionQuality || 'unknown'}
-                        </span>
-                      </div>
-                    </div>
+                <div className="max-w-md mx-auto">
+                  {/* Status Card */}
+                  <div className="bg-white rounded-lg p-8 border border-amber-900/20 shadow-lg text-center mb-6">
+                    {sessionData?.isActive ? (
+                      <>
+                        <div className="flex justify-center mb-6">
+                          <div className="relative">
+                            <div className="absolute inset-0 bg-green-500 rounded-full opacity-10 animate-pulse"></div>
+                            <div className="relative bg-gradient-to-br from-green-400 to-green-600 rounded-full p-6">
+                              <CheckCircle className="h-16 w-16 text-white" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <h3 className="text-3xl font-bold text-green-600 mb-3">Connected!</h3>
+                        <p className="text-xl text-amber-700 mb-6">Your WiFi connection is active and ready to use.</p>
+
+                        {/* Connection Details */}
+                        <div className="bg-green-50 rounded-lg p-6 mb-6 border border-green-200">
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <span className="text-amber-700 font-medium">Status</span>
+                              <span className="flex items-center space-x-2">
+                                <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <span className="text-green-600 font-bold">Active</span>
+                              </span>
+                            </div>
+
+                            <div className="h-px bg-green-200"></div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-amber-700 font-medium">Time Remaining</span>
+                              <span className="text-2xl font-bold text-amber-900">
+                                {formatRemainingTime(sessionData.remainingTime || 0)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Instructions */}
+                        <div className="bg-amber-50 rounded-lg p-6 mb-6 border border-amber-200">
+                          <h4 className="text-lg font-semibold text-amber-900 mb-3">📱 You're All Set!</h4>
+                          <ul className="text-left space-y-2 text-amber-800">
+                            <li className="flex items-start space-x-2">
+                              <span className="text-green-600 font-bold mt-1">✓</span>
+                              <span>Open WiFi settings on your device</span>
+                            </li>
+                            <li className="flex items-start space-x-2">
+                              <span className="text-green-600 font-bold mt-1">✓</span>
+                              <span>Look for "Starlink-WiFi" network</span>
+                            </li>
+                            <li className="flex items-start space-x-2">
+                              <span className="text-green-600 font-bold mt-1">✓</span>
+                              <span>No login needed - you're auto-connected!</span>
+                            </li>
+                            <li className="flex items-start space-x-2">
+                              <span className="text-green-600 font-bold mt-1">✓</span>
+                              <span>Start browsing and enjoy fast internet</span>
+                            </li>
+                          </ul>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-center mb-6">
+                          <div className="bg-red-50 rounded-full p-6">
+                            <AlertTriangle className="h-16 w-16 text-red-600" />
+                          </div>
+                        </div>
+
+                        <h3 className="text-3xl font-bold text-red-600 mb-3">No Connection</h3>
+                        <p className="text-xl text-amber-700 mb-6">Your WiFi connection is not currently active.</p>
+
+                        {/* Troubleshooting */}
+                        <div className="bg-red-50 rounded-lg p-6 mb-6 border border-red-200">
+                          <h4 className="text-lg font-semibold text-red-900 mb-3">What to do:</h4>
+                          <ul className="text-left space-y-2 text-red-800">
+                            <li className="flex items-start space-x-2">
+                              <span className="text-red-600 font-bold mt-1">•</span>
+                              <span>Purchase a plan to activate your connection</span>
+                            </li>
+                            <li className="flex items-start space-x-2">
+                              <span className="text-red-600 font-bold mt-1">•</span>
+                              <span>Check the Bundles tab for available plans</span>
+                            </li>
+                            <li className="flex items-start space-x-2">
+                              <span className="text-red-600 font-bold mt-1">•</span>
+                              <span>Make sure your payment was completed</span>
+                            </li>
+                          </ul>
+                        </div>
+
+                        {/* Buy Plan Button */}
+                        <button
+                          onClick={() => setActiveTab('bundles')}
+                          className="w-full bg-amber-700 hover:bg-amber-800 text-white font-semibold py-3 rounded-lg transition mb-4"
+                        >
+                          🛒 Browse Plans
+                        </button>
+                      </>
+                    )}
+
+                    {/* Refresh Button */}
+                    <button
+                      onClick={handleRefresh}
+                      disabled={sessionLoading}
+                      className="w-full flex items-center justify-center space-x-2 bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold py-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className={`h-5 w-5 ${sessionLoading ? 'animate-spin' : ''}`} />
+                      <span>{sessionLoading ? 'Checking...' : 'Refresh Status'}</span>
+                    </button>
                   </div>
 
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-amber-900">Data Usage</h3>
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">This Month</span>
-                        <span className="font-bold">{connectionStats.dataUsed}</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Data Limit</span>
-                        <span className="font-bold text-green-400">{connectionStats.dataLimit}</span>
-                      </div>
-                      {/* <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Peak Usage</span>
-                        <span className="font-bold">8 PM - 11 PM</span>
-                      </div> */}
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Connected Devices</span>
-                        <span className="font-bold">1</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded-lg border border-amber-900/20">
-                        <span className="text-amber-700">Session Status</span>
-                        <span className={`font-bold ${connectionMetrics?.isConnected ? 'text-green-500' : 'text-red-500'}`}>
-                          {connectionMetrics?.isConnected ? 'Connected' : 'Offline'}
+                  {/* Auto-refresh Toggle */}
+                  {sessionData?.isActive && (
+                    <div className="bg-white rounded-lg p-4 border border-amber-900/20 shadow">
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={autoRefreshEnabled}
+                          onChange={(e) => setAutoRefreshEnabled(e.target.checked)}
+                          className="w-4 h-4 text-amber-700 rounded"
+                        />
+                        <span className="text-amber-900">
+                          Auto-refresh every {refreshInterval / 1000}s
+                          {autoRefreshEnabled && <span className="animate-pulse"> ✓</span>}
                         </span>
-                      </div>
+                      </label>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
-
-              <div className={`mt-6 p-4 rounded-lg border ${
-                connectionMetrics?.isConnected 
-                  ? 'bg-green-500/20 border-green-500' 
-                  : 'bg-red-500/20 border-red-500'
-              }`}>
-                <div className="flex items-center space-x-3">
-                  <Wifi className={`h-6 w-6 ${connectionMetrics?.isConnected ? 'text-green-400' : 'text-red-400'}`} />
-                  <div>
-                    <div className="font-semibold">{connectionMetrics?.isConnected ? 'Connection Status: Excellent' : 'Connection Status: Offline'}</div>
-                    <div className="text-sm text-amber-600">
-                      {connectionMetrics?.isConnected 
-                        ? 'Your Splendid StarLink connection is performing optimally' 
-                        : 'No active connection available'}
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         );
@@ -1285,15 +1438,34 @@ export default function DashboardPage() {
       {activeTransactionId && (
         <PaymentStatusMonitor
           transactionId={activeTransactionId}
+          variant={activePaymentVariant || 'bundle'}
+          planDuration={activePlanDuration ?? undefined}
+          recipientUsername={activeGiftDetails?.recipientUsername}
+          recipientPassword={activeGiftDetails?.recipientPassword}
           onPaymentSuccess={(data) => {
             console.log('✅ Payment successful, user activated:', data);
-            addToast('🎉 Payment successful! Redirecting to captive portal for normal login.', 'success', 5000);
-            setActiveTransactionId(null);
+            if (activePaymentVariant === 'gift') {
+              addToast('🎉 Gift payment successful! Your recipient can now log in.', 'success', 7000);
+            } else {
+              addToast('🎉 Payment successful! Redirecting to captive portal for login.', 'success', 5000);
+            }
+            // Don't unmount immediately - let the modal show and handle redirect or close
           }}
           onPaymentFailed={(error) => {
-            console.error('❌ Payment failed:', error);
-            addToast(`Payment failed: ${error}`, 'error');
-            setActiveTransactionId(null);
+            const failureMessage = typeof error === 'string' && error.trim() !== '' ? error : 'Unknown payment error';
+            console.error('❌ Payment failed:', failureMessage);
+            addToast(`Payment failed: ${failureMessage}`, 'error');
+            setActiveTransactionId(null); // Only unmount on failure
+            setActivePaymentVariant(null);
+            setActiveGiftDetails(null);
+            setActivePlanDuration(null);
+          }}
+          onRedirect={() => {
+            console.log('🔄 Payment monitor redirect/close complete, unmounting component');
+            setActiveTransactionId(null); // Unmount after redirect or gift close
+            setActivePaymentVariant(null);
+            setActiveGiftDetails(null);
+            setActivePlanDuration(null);
           }}
         />
       )}

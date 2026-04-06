@@ -29,13 +29,13 @@ export default function ConnectionStatusPage() {
 
   const [sessionData, setSessionData] = useState<SessionStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false); // Disabled auto-refresh
   const [refreshInterval, setRefreshInterval] = useState(5000); // 5 seconds
 
-  // Redirect if not authenticated
+  // Redirect to dashboard connectivity tab
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push("/auth/login");
+    if (!authLoading && isAuthenticated) {
+      router.push('/dashboard?tab=connectivity');
     }
   }, [isAuthenticated, authLoading, router]);
 

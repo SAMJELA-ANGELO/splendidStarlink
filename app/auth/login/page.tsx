@@ -84,7 +84,7 @@ export default function LoginPage() {
         const sessionStatus = await apiFetchGet<{ isActive: boolean; remainingTime?: number }>('/sessions/status');
         if (sessionStatus.isActive) {
           // User has active session, show connection status
-          router.push('/connection-status');
+          router.push('/dashboard?tab=connectivity');
           return;
         }
       } catch (sessionErr) {
@@ -101,7 +101,7 @@ export default function LoginPage() {
           if (hasActivePlan) {
             // Active plan - redirect to connection status (WiFi should be working)
             console.log('✅ User has active plan, redirecting to connection status');
-            router.push('/connection-status');
+            router.push('/dashboard?tab=connectivity');
           } else {
             // No active plan - redirect to plans page for renewal
             console.log('⚠️ User has no active plan, redirecting to plans');
