@@ -141,11 +141,8 @@ export function PaymentStatusMonitor({
   }, [status, attemptCount, maxAttempts, transactionId, pollInterval, onPaymentSuccess, onPaymentFailed]);
 
   const redirectToMikroTikLogin = useCallback(() => {
-    const wifiLinkLogin = localStorage.getItem('wifiLinkLogin');
-    const wifiLinkOrig = localStorage.getItem('wifiLinkOrig');
-
-    // Try the MikroTik provided link, then the known router IP, then the standard gateway
-    const url = wifiLinkLogin || wifiLinkOrig || 'http://10.0.0.2/login' || 'http://10.0.0.1/login';
+    // Use the default MikroTik captive portal URL
+    const url = 'http://tata.org/login';
 
     console.log('🔄 Redirecting to:', url);
     window.location.href = url;
