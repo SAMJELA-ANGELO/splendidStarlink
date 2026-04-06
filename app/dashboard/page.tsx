@@ -202,10 +202,49 @@ export default function DashboardPage() {
       }
       try {
         setDataLoading(true);
-        // Fetch session data for isActive status only
+        // Fetch session data for isActive status
         const sessionRes = await apiFetchGet<SessionData>('/sessions/status');
         setSessionData(sessionRes);
-        // Optionally, setActivePlan(null); or fetch plan info elsewhere if needed
+        
+        // Fetch user's billing data (invoices/active plans)
+        try {
+          const billingRes = await apiFetchGet<BillingData>('/user/billing');
+          if (billingRes && billingRes.invoices && billingRes.invoices.length > 0) {
+            // Find the most recent invoice that's still active (based on purchaseDate and duration)
+            const now = new Date();
+            const activeInvoices = billingRes.invoices.filter((invoice) => {
+              const purchaseDate = new Date(invoice.purchaseDate);
+              // Assuming invoices have duration info, add to purchase date to get expiry
+              // For now, we'll just show the most recent one if it looks recent
+              const daysSincePurchase = (now.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24);
+              return daysSincePurchase < 365; // Assume plans are valid for up to a year
+            });
+            
+            if (activeInvoices.length > 0) {
+              // Get the most recent one
+              const mostRecent = activeInvoices.reduce((prev, current) => 
+                new Date(current.purchaseDate) > new Date(prev.purchaseDate) ? current : prev
+              );
+              
+              setActivePlan({
+                plan: mostRecent.planName,
+                purchasedAt: new Date(mostRecent.purchaseDate),
+                amount: mostRecent.amount,
+                duration: 0, // Duration would come from the plan details, defaulting to 0
+              });
+              console.log('✅ Active plan loaded:', mostRecent.planName);
+            } else {
+              setActivePlan(null);
+              console.log('ℹ️ No active plans found');
+            }
+          } else {
+            setActivePlan(null);
+            console.log('ℹ️ No billing history found');
+          }
+        } catch (billingErr) {
+          console.warn('Failed to fetch billing data:', billingErr);
+          setActivePlan(null);
+        }
       } catch (err) {
         console.error('Failed to fetch session data:', err);
         setSessionData({ isActive: false });

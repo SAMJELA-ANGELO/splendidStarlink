@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, LogIn, Wifi, Clock } from "lucide-react";
 
 interface PaymentStatusMonitorProps {
   transactionId: string;
@@ -32,8 +32,9 @@ export function PaymentStatusMonitor({
   const [status, setStatus] = useState<"checking" | "success" | "failed">("checking");
   const [paymentData, setPaymentData] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [modalCountdown, setModalCountdown] = useState<number | null>(null);
   const [attemptCount, setAttemptCount] = useState(0);
-  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     const pollPaymentStatus = async () => {
@@ -62,25 +63,37 @@ export function PaymentStatusMonitor({
         switch (data.status) {
           case 'SUCCESSFUL':
             console.log('✅ ===== PAYMENT SUCCESSFUL =====');
-            console.log('✅ Payment SUCCESSFUL - triggering silent login');
+            console.log('✅ Payment SUCCESSFUL - triggering redirect to success page');
             console.log('✅ Activation data:', data.activation);
-            console.log('✅ Ready for silent login:', data.activation?.readyForSilentLogin);
+            console.log('✅ Is Gift:', data.isGift);
 
             setPaymentData(data);
 
-            // Store duration for silent login
+            // Store duration for success page
             if (data.activation?.plan?.duration) {
               localStorage.setItem('wifiSessionDuration', data.activation.plan.duration.toString());
               console.log(`⏱️ Stored session duration: ${data.activation.plan.duration} hours`);
             }
 
-            // Store username for silent login
+            // Store username for success page
             if (data.activation?.username) {
               localStorage.setItem('wifiSessionUsername', data.activation.username);
-              console.log(`👤 Stored username for silent login: ${data.activation.username}`);
+              console.log(`👤 Stored username: ${data.activation.username}`);
+            }
+
+            // Store gift information if applicable
+            if (data.isGift) {
+              localStorage.setItem('wifiPaymentIsGift', 'true');
+              console.log(`🎁 This is a gift payment`);
+            }
+
+            if (data.recipientUsername) {
+              localStorage.setItem('wifiPaymentRecipientUsername', data.recipientUsername);
+              console.log(`🎁 Recipient: ${data.recipientUsername}`);
             }
 
             setStatus('success');
+            setShowSuccessModal(true);
             console.log('✅ ===== PAYMENT STATUS MONITOR SUCCESS =====');
             onPaymentSuccess?.(data);
             break;
@@ -132,152 +145,231 @@ export function PaymentStatusMonitor({
     }
   }, [transactionId, status, attemptCount, pollInterval, maxAttempts, onPaymentSuccess, onPaymentFailed]);
 
-  // On successful payment, redirect to captive portal login page (or fallback to /auth/login)
+  // On successful payment, show success modal and redirect to login
   useEffect(() => {
-    if (status === 'success') {
-      const wifiLinkLogin = localStorage.getItem('wifiLinkLogin');
-      const wifiLinkOrig = localStorage.getItem('wifiLinkOrig');
-      
-      const captivePortalUrl =
-        wifiLinkLogin ||
-        wifiLinkOrig ||
-        '/auth/login';
+    if (status === 'success' && showSuccessModal) {
+      console.log('🌐 ===== PAYMENT SUCCESS MODAL =====');
+      console.log('🌐 Showing success modal, will redirect to login in 5 seconds...');
 
-      console.log('🌐 ===== PAYMENT SUCCESS REDIRECT =====');
-      console.log('🌐 wifiLinkLogin from localStorage:', wifiLinkLogin);
-      console.log('🌐 wifiLinkOrig from localStorage:', wifiLinkOrig);
-      console.log('🌐 Final captive portal URL:', captivePortalUrl);
-      console.log('🌐 Will redirect in 2 seconds...');
-
-      // Start countdown
-      setRedirectCountdown(2);
+      // Auto-redirect after 5 seconds
+      setModalCountdown(5);
       const countdownInterval = setInterval(() => {
-        setRedirectCountdown(prev => prev !== null && prev > 0 ? prev - 1 : null);
+        setModalCountdown(prev => prev !== null && prev > 0 ? prev - 1 : null);
       }, 1000);
 
       const timer = setTimeout(() => {
-        console.log('🌐 ===== EXECUTING REDIRECT =====');
-        console.log('🌐 Redirecting to:', captivePortalUrl);
+        console.log('🌐 ===== EXECUTING REDIRECT TO MIKROTIK LOGIN =====');
         clearInterval(countdownInterval);
-        try {
-          window.location.href = captivePortalUrl;
-        } catch (error) {
-          console.error('🌐 ===== REDIRECT FAILED =====');
-          console.error('🌐 Error redirecting to captive portal:', error);
-        }
-      }, 2000);
+        redirectToMikroTikLogin();
+      }, 5000);
 
       return () => {
         clearTimeout(timer);
         clearInterval(countdownInterval);
       };
     }
-  }, [status]);
+  }, [status, showSuccessModal]);
 
-  // Render different states
+  const redirectToMikroTikLogin = () => {
+    const wifiLinkLogin = localStorage.getItem('wifiLinkLogin');
+    const wifiLinkOrig = localStorage.getItem('wifiLinkOrig');
+    const captivePortalUrl = wifiLinkLogin || wifiLinkOrig;
+
+    if (captivePortalUrl) {
+      console.log('🔄 Redirecting to MikroTik captive portal:', captivePortalUrl);
+      window.location.href = captivePortalUrl;
+    } else {
+      // Fallback to a typical MikroTik login URL
+      console.log('🔄 No captive portal URL found, redirecting to default MikroTik login');
+      window.location.href = 'http://10.0.0.1/login';
+    }
+  };
+
+  // Render different states - all fullscreen overlay
   if (status === 'checking') {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-        <Loader2 className="h-12 w-12 animate-spin text-amber-700 mb-6" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Processing Payment</h2>
-        <p className="text-gray-600 text-center mb-6">
-          Verifying your payment with Fapshi...
-        </p>
-        <p className="text-sm text-gray-500 mb-8">
-          Attempt {attemptCount + 1} of {maxAttempts}
-        </p>
-
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-sm text-center">
-          <p className="text-sm text-blue-800">
-            Do not refresh or close this page. We're checking your payment status.
+      <div className="fixed inset-0 bg-white flex flex-col items-center justify-center p-8 z-[100] overflow-y-auto" style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 100 }}>
+        <div className="flex flex-col items-center justify-center">
+          <Loader2 className="h-12 w-12 animate-spin text-amber-700 mb-6" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Processing Payment</h2>
+          <p className="text-gray-600 text-center mb-6">
+            Verifying your payment with Fapshi...
           </p>
-        </div>
-
-        <div className="mt-8 text-center text-xs text-gray-500 max-w-sm">
-          <p>
-            Transaction ID: <code className="bg-gray-100 px-2 py-1 rounded text-gray-700">{transactionId}</code>
+          <p className="text-sm text-gray-500 mb-8">
+            Attempt {attemptCount + 1} of {maxAttempts}
           </p>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-sm text-center">
+            <p className="text-sm text-blue-800">
+              Do not refresh or close this page. We're checking your payment status.
+            </p>
+          </div>
+
+          <div className="mt-8 text-center text-xs text-gray-500 max-w-sm">
+            <p>
+              Transaction ID: <code className="bg-gray-100 px-2 py-1 rounded text-gray-700">{transactionId}</code>
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
   if (status === 'success') {
-    const captivePortalUrl =
-      localStorage.getItem('wifiLinkLogin') ||
-      localStorage.getItem('wifiLinkOrig') ||
-      '/auth/login';
-
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-        <CheckCircle2 className="h-16 w-16 text-green-500 mb-6" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Successful!</h2>
-        <p className="text-gray-600 text-center mb-6">
-          {paymentData?.activation?.message || 'Your plan is activated. Redirecting you to your WiFi portal for normal login...'}
-        </p>
-
-        {redirectCountdown !== null && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-sm text-center mb-4">
-            <p className="text-sm text-blue-800">
-              Redirecting in {redirectCountdown} second{redirectCountdown !== 1 ? 's' : ''}...
-            </p>
-          </div>
-        )}
-
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-w-sm text-center mb-8">
-          <p className="text-sm text-green-800 mb-2">
-            If redirect does not start automatically, click the button below.
-          </p>
-          <p className="text-xs text-green-700">
-            Or use your browser's back button to return to the captive portal.
-          </p>
-        </div>
-
-        <a
-          href={captivePortalUrl}
-          className="bg-amber-700 hover:bg-amber-800 text-white font-semibold px-6 py-3 rounded-lg transition"
-        >
-          Go to Captive Portal
-        </a>
-      </div>
-    );
+    return null; // Modal will be shown instead
   }
 
   // Failed state
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8">
-      <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Failed</h2>
-      <p className="text-gray-600 text-center mb-6">
-        {errorMessage || 'Unable to process your payment at this time.'}
-      </p>
-
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-sm text-center mb-8">
-        <p className="text-sm text-red-800 mb-2">
-          Transaction ID: <code className="bg-red-100 px-2 py-1 rounded">{transactionId}</code>
+    <div className="fixed inset-0 bg-white flex flex-col items-center justify-center p-8 z-[100] overflow-y-auto" style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 100 }}>
+      <div className="flex flex-col items-center justify-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-6" />
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Failed</h2>
+        <p className="text-gray-600 text-center mb-6">
+          {errorMessage || 'Unable to process your payment at this time.'}
         </p>
-      </div>
 
-      <div className="flex gap-4">
-        <a
-          href="/dashboard?tab=bundles"
-          className="bg-amber-700 hover:bg-amber-800 text-white font-semibold px-6 py-3 rounded-lg transition"
-        >
-          Try Again
-        </a>
-        <a
-          href="/dashboard"
-          className="bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold px-6 py-3 rounded-lg transition"
-        >
-          Go to Dashboard
-        </a>
-      </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-sm text-center mb-8">
+          <p className="text-sm text-red-800 mb-2">
+            Transaction ID: <code className="bg-red-100 px-2 py-1 rounded">{transactionId}</code>
+          </p>
+        </div>
 
-      <div className="mt-8 text-center text-xs text-gray-500 max-w-sm">
-        <p className="mb-2">
-          If you believe this is an error, please contact support with your transaction ID.
-        </p>
+        <div className="flex gap-4">
+          <a
+            href="/dashboard?tab=bundles"
+            className="bg-amber-700 hover:bg-amber-800 text-white font-semibold px-6 py-3 rounded-lg transition"
+          >
+            Try Again
+          </a>
+          <a
+            href="/dashboard"
+            className="bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold px-6 py-3 rounded-lg transition"
+          >
+            Go to Dashboard
+          </a>
+        </div>
+
+        <div className="mt-8 text-center text-xs text-gray-500 max-w-sm">
+          <p className="mb-2">
+            If you believe this is an error, please contact support with your transaction ID.
+          </p>
+        </div>
       </div>
     </div>
   );
-}
+
+  // Success Modal
+  if (showSuccessModal && status === 'success') {
+    const username = localStorage.getItem('wifiSessionUsername') || 'Your Account';
+    const duration = localStorage.getItem('wifiSessionDuration') || 'Standard Plan';
+    const isGift = localStorage.getItem('wifiPaymentIsGift') === 'true';
+    const recipientUsername = localStorage.getItem('wifiPaymentRecipientUsername');
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[100]" style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 100 }}>
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-green-500 to-green-600 px-6 py-8 flex flex-col items-center">
+            <div className="bg-white bg-opacity-20 rounded-full p-3 mb-4">
+              <CheckCircle2 size={40} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-white text-center">
+              Payment Successful!
+            </h2>
+          </div>
+
+          {/* Content */}
+          <div className="p-6">
+            <div className="text-center mb-6">
+              <p className="text-gray-700 text-lg font-semibold mb-2">
+                {isGift
+                  ? `Gift sent to ${recipientUsername}`
+                  : 'Your plan is now active!'}
+              </p>
+              <p className="text-gray-600 text-sm">
+                {isGift
+                  ? 'The recipient can now log in with their credentials'
+                  : 'You can now connect to the WiFi and access the internet'}
+              </p>
+            </div>
+
+            {/* Session Details */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-gray-700">
+                  <div className="bg-blue-100 rounded-full p-1.5">
+                    <Wifi size={16} className="text-blue-700" />
+                  </div>
+                  <span className="font-medium text-sm">Username</span>
+                </div>
+                <span className="font-semibold text-gray-900 text-sm">
+                  {username}
+                </span>
+              </div>
+
+              <div className="h-px bg-gray-200" />
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-gray-700">
+                  <div className="bg-orange-100 rounded-full p-1.5">
+                    <Clock size={16} className="text-orange-700" />
+                  </div>
+                  <span className="font-medium text-sm">Duration</span>
+                </div>
+                <span className="font-semibold text-gray-900 text-sm">
+                  {duration} {duration !== 'Standard Plan' ? 'hours' : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* Auto-redirect Notice */}
+            {modalCountdown !== null && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-center">
+                <p className="text-sm text-amber-800">
+                  Redirecting to login portal in {modalCountdown} second{modalCountdown !== 1 ? 's' : ''}...
+                </p>
+              </div>
+            )}
+
+            {/* Instructions */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <h3 className="font-semibold text-blue-900 mb-2 text-sm">What's Next?</h3>
+              <ol className="text-xs text-blue-800 space-y-1">
+                <li className="flex items-start gap-2">
+                  <span className="font-bold flex-shrink-0">1.</span>
+                  <span>
+                    {isGift
+                      ? 'Share the login credentials with the recipient'
+                      : 'Connect to your WiFi network'}
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold flex-shrink-0">2.</span>
+                  <span>Log in with your username and password</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold flex-shrink-0">3.</span>
+                  <span>Enjoy unlimited internet access!</span>
+                </li>
+              </ol>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={redirectToMikroTikLogin}
+                className="flex-1 bg-amber-700 hover:bg-amber-800 text-white font-semibold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2"
+              >
+                <LogIn size={18} />
+                Go to Login Portal
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
