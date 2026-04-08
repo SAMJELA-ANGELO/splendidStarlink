@@ -60,6 +60,12 @@ export default function PlansPage() {
     return name;
   };
 
+  const getPlanConnectionSpeed = (name: string) => {
+    return name.toLowerCase().includes('limited')
+      ? 'Medium-speed connection'
+      : 'High-speed connection';
+  };
+
   // Get emoji for plan
   const getPlanEmoji = (name: string) => {
     if (name.includes('100 CFA')) return '🚀';
@@ -159,7 +165,7 @@ export default function PlansPage() {
                   </li>
                   <li className="flex items-start text-amber-900">
                     <CheckCircle className="h-5 w-5 text-green-500 mr-3 flex-shrink-0 mt-1" />
-                    <span>High-speed connection</span>
+                    <span>{getPlanConnectionSpeed(plan.name)}</span>
                   </li>
                   <li className="flex items-start text-amber-900">
                     <CheckCircle className="h-5 w-5 text-green-500 mr-3 flex-shrink-0 mt-1" />

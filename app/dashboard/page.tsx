@@ -192,6 +192,12 @@ export default function DashboardPage() {
     return planMap[priceNum] || `Plan ${priceNum}`;
   };
 
+  const getPlanConnectionSpeed = (planName: string): string => {
+    return planName.toLowerCase().includes('limited')
+      ? 'Medium-speed connection'
+      : 'High-speed connection';
+  };
+
   // Format remaining time
   const formatRemainingTime = (ms: number): string => {
     if (ms <= 0) return "Expired";
@@ -957,7 +963,7 @@ export default function DashboardPage() {
                           <CheckCircle className="h-4 w-4 text-green-500 mr-2" /> {plan.duration} hours access
                         </li>
                         <li className="flex items-center text-amber-900">
-                          <CheckCircle className="h-4 w-4 text-green-500 mr-2" /> High-speed connection
+                          <CheckCircle className="h-4 w-4 text-green-500 mr-2" /> {getPlanConnectionSpeed(plan.name)}
                         </li>
                         <li className="flex items-center text-amber-900">
                           <CheckCircle className="h-4 w-4 text-green-500 mr-2" /> 
