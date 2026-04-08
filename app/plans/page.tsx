@@ -66,6 +66,22 @@ export default function PlansPage() {
       : 'High-speed connection';
   };
 
+  const formatPlanDurationLabel = (plan: Plan) => {
+    if ([100, 200, 300].includes(plan.price)) {
+      return `${plan.duration} hours`;
+    }
+    if (plan.price === 500) {
+      return '1 day';
+    }
+    if (plan.price === 2500) {
+      return '1 week';
+    }
+    if (plan.price === 5000 || plan.price === 7000) {
+      return '1 month';
+    }
+    return `${plan.duration} hours`;
+  };
+
   // Get emoji for plan
   const getPlanEmoji = (name: string) => {
     if (name.includes('100 CFA')) return '🚀';
@@ -150,7 +166,7 @@ export default function PlansPage() {
                   <h3 className="text-xl font-bold text-amber-900">{formatPlanName(plan.name)}</h3>
                   <p className="text-3xl font-bold mb-4 text-amber-900">
                     {plan.price} FCFA
-                    <span className="text-lg text-amber-600"> / {plan.duration} hours</span>
+                    <span className="text-lg text-amber-600"> / {formatPlanDurationLabel(plan)}</span>
                   </p>
                   {isPopularPlan(plan.name) && (
                     <div className="inline-block bg-amber-700 text-white text-xs px-3 py-1 rounded-full">
@@ -161,7 +177,7 @@ export default function PlansPage() {
                 <ul className="space-y-3 mb-6">
                   <li className="flex items-start text-amber-900">
                     <CheckCircle className="h-5 w-5 text-green-500 mr-3 flex-shrink-0 mt-1" />
-                    <span>{plan.duration} hours access</span>
+                    <span>{formatPlanDurationLabel(plan)} access</span>
                   </li>
                   <li className="flex items-start text-amber-900">
                     <CheckCircle className="h-5 w-5 text-green-500 mr-3 flex-shrink-0 mt-1" />
