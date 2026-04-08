@@ -57,13 +57,16 @@ export default function PlansPage() {
     if (name.includes('100 CFA')) return 'Basic';
     if (name.includes('200 CFA')) return 'Standard';
     if (name.includes('500 CFA')) return 'Premium';
+    if (name.includes('2500 CFA')) return 'Silver';
+    if (name.includes('5000 CFA')) return 'Gold';
+    if (name.includes('7000 CFA')) return 'Platinum';
     return name;
   };
 
   const getPlanConnectionSpeed = (name: string) => {
-    return name.toLowerCase().includes('limited')
-      ? 'Medium-speed connection'
-      : 'High-speed connection';
+    return name.toLowerCase().includes('unlimited')
+      ? 'High-speed connection'
+      : 'Medium-speed connection';
   };
 
   const formatPlanDurationLabel = (plan: Plan) => {
@@ -87,6 +90,9 @@ export default function PlansPage() {
     if (name.includes('100 CFA')) return '🚀';
     if (name.includes('200 CFA')) return '⭐';
     if (name.includes('500 CFA')) return '👑';
+    if (name.includes('2500 CFA')) return '👑';
+    if (name.includes('5000 CFA')) return '👑';
+    if (name.includes('7000 CFA')) return '👑';
     return '📦';
   };
 

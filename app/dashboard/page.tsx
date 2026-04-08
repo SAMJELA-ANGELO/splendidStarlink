@@ -193,9 +193,9 @@ export default function DashboardPage() {
   };
 
   const getPlanConnectionSpeed = (planName: string): string => {
-    return planName.toLowerCase().includes('limited')
-      ? 'Medium-speed connection'
-      : 'High-speed connection';
+    return planName.toLowerCase().includes('unlimited')
+      ? 'High-speed connection'
+      : 'Medium-speed connection';
   };
 
   const formatPlanDurationLabel = (plan: Plan) => {
