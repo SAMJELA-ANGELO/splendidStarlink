@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Satellite, User, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Satellite, User, Lock, Eye, EyeOff, Loader2, Key, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiFetchGet } from "@/lib/api-client";
+import { apiFetchGet, apiFetchPost } from "@/lib/api-client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +16,11 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [redirectInfo, setRedirectInfo] = useState<{ tab?: string; plan?: string; name?: string; mac?: string; router?: string; ip?: string }>({});
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordUsername, setForgotPasswordUsername] = useState("");
+  const [recoveredPassword, setRecoveredPassword] = useState<string | null>(null);
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+  const [forgotPasswordError, setForgotPasswordError] = useState("");
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -127,6 +132,31 @@ export default function LoginPage() {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotPasswordLoading(true);
+    setForgotPasswordError("");
+    setRecoveredPassword(null);
+
+    try {
+      const response = await apiFetchPost<{ password: string }>('/auth/recover-password', {
+        username: forgotPasswordUsername
+      });
+      setRecoveredPassword(response.password);
+    } catch (err: any) {
+      setForgotPasswordError(err.message || "Failed to recover password. Please try again.");
+    } finally {
+      setForgotPasswordLoading(false);
+    }
+  };
+
+  const resetForgotPassword = () => {
+    setShowForgotPassword(false);
+    setForgotPasswordUsername("");
+    setRecoveredPassword(null);
+    setForgotPasswordError("");
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -179,7 +209,16 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">Password</label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm text-amber-600 hover:text-amber-700 font-medium transition"
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-700" />
                 <input
@@ -233,6 +272,111 @@ export default function LoginPage() {
           </Link>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Key className="h-5 w-5 mr-2 text-amber-600" />
+                Password Recovery
+              </h3>
+              <button
+                onClick={resetForgotPassword}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <p className="text-sm text-gray-600">
+                Enter your username to recover your password. You can only change your password from your account dashboard.
+              </p>
+            </div>
+
+            {recoveredPassword ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="font-semibold text-green-800">Password Recovered</span>
+                  </div>
+                  <p className="text-green-700 mb-2">Your current password is:</p>
+                  <div className="bg-white border border-green-300 rounded px-3 py-2 font-mono text-green-800">
+                    {recoveredPassword}
+                  </div>
+                  <p className="text-sm text-green-600 mt-2">
+                    Please save this password securely. To change it, go to your dashboard Account settings.
+                  </p>
+                </div>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={resetForgotPassword}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition"
+                  >
+                    Close
+                  </button>
+                  <Link
+                    href="/dashboard?tab=account"
+                    className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg transition text-center"
+                  >
+                    Go to Account Settings
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                {forgotPasswordError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                    {forgotPasswordError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 h-5 w-5 text-gray-700" />
+                    <input
+                      type="text"
+                      value={forgotPasswordUsername}
+                      onChange={(e) => setForgotPasswordUsername(e.target.value)}
+                      className="w-full pl-10 pr-3 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      placeholder="Enter your username"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button
+                    type="button"
+                    onClick={resetForgotPassword}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotPasswordLoading}
+                    className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  >
+                    {forgotPasswordLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Recovering...
+                      </>
+                    ) : (
+                      'Recover Password'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

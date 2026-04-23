@@ -128,6 +128,12 @@ export default function DashboardPage() {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(5000); // 5 seconds
+  const [showPasswordRecovery, setShowPasswordRecovery] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [recoveredPassword, setRecoveredPassword] = useState<string | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -203,7 +209,7 @@ export default function DashboardPage() {
       return `${plan.duration} hours`;
     }
     if (plan.price === 500) {
-      return '1 day';
+      return '10 hours';
     }
     if (plan.price === 2500) {
       return '1 week';
@@ -641,7 +647,8 @@ export default function DashboardPage() {
     { id: "connectivity", label: "Connectivity", icon: Wifi },
     { id: "bundles", label: "Browse Bundles", icon: ShoppingBag },
     { id: "gift", label: "Buy for Someone", icon: Gift },
-    { id: "billing", label: "Billing", icon: CreditCard }
+    { id: "billing", label: "Billing", icon: CreditCard },
+    { id: "account", label: "Account", icon: User }
   ];
 
   const renderContent = () => {
@@ -1352,6 +1359,169 @@ export default function DashboardPage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        );
+
+      case "account":
+        return (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg p-6 border border-amber-900/20 shadow-sm">
+              <h2 className="text-2xl font-bold mb-6 text-amber-900">Account Settings</h2>
+
+              {/* Password Recovery Section */}
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold mb-4 text-amber-900">Password Recovery</h3>
+                <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                  <p className="text-sm text-amber-700 mb-4">
+                    View your current password or recover it if needed. This feature is available for account security purposes.
+                  </p>
+
+                  {!showPasswordRecovery ? (
+                    <button
+                      onClick={() => setShowPasswordRecovery(true)}
+                      className="bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 rounded-lg transition"
+                    >
+                      View/Recover Password
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      {recoveredPassword ? (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <CheckCircle className="h-5 w-5 text-green-500" />
+                            <span className="font-semibold text-green-800">Password Recovered</span>
+                          </div>
+                          <p className="text-green-700 mb-2">Your current password is:</p>
+                          <div className="bg-white border border-green-300 rounded px-3 py-2 font-mono text-green-800">
+                            {recoveredPassword}
+                          </div>
+                          <p className="text-sm text-green-600 mt-2">
+                            Please save this password securely. You can change it below if needed.
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            try {
+                              setPasswordLoading(true);
+                              const response = await apiFetchPost<{ password: string }>('/auth/recover-password');
+                              setRecoveredPassword(response.password);
+                              addToast('Password recovered successfully', 'success');
+                            } catch (error) {
+                              addToast('Failed to recover password', 'error');
+                            } finally {
+                              setPasswordLoading(false);
+                            }
+                          }}
+                          disabled={passwordLoading}
+                          className="bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 rounded-lg transition disabled:opacity-50"
+                        >
+                          {passwordLoading ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
+                              Recovering...
+                            </>
+                          ) : (
+                            'Recover Password'
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Change Password Section */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4 text-amber-900">Change Password</h3>
+                <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (newPassword !== confirmPassword) {
+                        addToast('Passwords do not match', 'error');
+                        return;
+                      }
+                      if (newPassword.length < 6) {
+                        addToast('Password must be at least 6 characters', 'error');
+                        return;
+                      }
+
+                      try {
+                        setPasswordLoading(true);
+                        await apiFetchPost('/auth/change-password', {
+                          currentPassword,
+                          newPassword
+                        });
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                        setRecoveredPassword(null);
+                        addToast('Password changed successfully', 'success');
+                      } catch (error) {
+                        addToast('Failed to change password', 'error');
+                      } finally {
+                        setPasswordLoading(false);
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <label className="block text-sm font-medium text-amber-700 mb-1">
+                        Current Password
+                      </label>
+                      <input
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-amber-700 mb-1">
+                        New Password
+                      </label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-amber-700 mb-1">
+                        Confirm New Password
+                      </label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={passwordLoading}
+                      className="bg-amber-700 hover:bg-amber-800 text-white px-4 py-2 rounded-lg transition disabled:opacity-50"
+                    >
+                      {passwordLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
+                          Changing...
+                        </>
+                      ) : (
+                        'Change Password'
+                      )}
+                    </button>
+                  </form>
+                </div>
+              </div>
             </div>
           </div>
         );

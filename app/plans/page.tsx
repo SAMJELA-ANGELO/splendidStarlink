@@ -74,7 +74,7 @@ export default function PlansPage() {
       return `${plan.duration} hours`;
     }
     if (plan.price === 500) {
-      return '1 day';
+      return '10 hours';
     }
     if (plan.price === 2500) {
       return '1 week';
@@ -151,6 +151,30 @@ export default function PlansPage() {
           <p className="text-xl text-amber-700 mb-8 animate-fade-in animation-delay-200">
             Simple, transparent pricing with no hidden fees. Choose the plan that works best for you.
           </p>
+        </div>
+      </section>
+
+      {/* Security Information */}
+      <section className="px-6 py-12 bg-amber-50 border-t border-amber-200">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-lg p-6 shadow-sm border border-amber-200">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-amber-900 mb-2">Security & Payment Protection</h3>
+                <div className="text-sm text-amber-700 space-y-1">
+                  <p>• <strong>Rate Limiting:</strong> Maximum 3 payment requests per hour per device</p>
+                  <p>• <strong>Transaction Locks:</strong> Only one pending payment allowed at a time</p>
+                  <p>• <strong>Device Restrictions:</strong> One account per device (except gift purchases)</p>
+                  <p>• <strong>Phone Verification:</strong> Payments require valid phone number verification</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

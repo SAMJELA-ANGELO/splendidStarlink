@@ -21,12 +21,9 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [redirectInfo, setRedirectInfo] = useState<{ redirect?: string; plan?: string; name?: string; mac?: string; router?: string; ip?: string; link_login?: string; link_orig?: string }>({});
 
-  // Redirect if already authenticated
-  useEffect(() => {
-    if (isAuthenticated && !authLoading) {
-      router.push("/dashboard");
-    }
-  }, [isAuthenticated, authLoading, router]);
+  // Note: We intentionally do NOT redirect authenticated users on the signup page
+  // Users should be able to create a new account even if they have an existing session
+  // If they want to go back to their existing account, they can click the login link
 
   // Handle URL parameters for redirect
   useEffect(() => {
