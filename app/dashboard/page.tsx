@@ -1671,13 +1671,6 @@ export default function DashboardPage() {
             setActiveGiftDetails(null);
             setActivePlanDuration(null);
           }}
-          onCancel={() => {
-            addToast('Payment monitoring cancelled. Please retry if needed.', 'info');
-            setActiveTransactionId(null);
-            setActivePaymentVariant(null);
-            setActiveGiftDetails(null);
-            setActivePlanDuration(null);
-          }}
         />
       )}
     </div>
