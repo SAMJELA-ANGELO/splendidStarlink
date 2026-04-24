@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/contexts/ToastContext";
+import { SocketProvider } from "@/contexts/SocketContext";
 import { ToastContainer } from "@/components/ToastContainer";
 import "./globals.css";
 
@@ -33,8 +34,10 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ToastProvider>
           <AuthProvider>
-            {children}
-            <ToastContainer />
+            <SocketProvider>
+              {children}
+              <ToastContainer />
+            </SocketProvider>
           </AuthProvider>
         </ToastProvider>
       </body>

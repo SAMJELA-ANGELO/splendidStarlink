@@ -2,18 +2,25 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, LogIn } from 'lucide-react';
+import { useSocket } from '@/contexts/SocketContext';
+
+type PaymentActivationData = {
+  username?: string;
+  password?: string;
+  sessionExpiry?: string;
+  activeRouter?: string;
+};
 
 type PaymentData = {
   status?: string;
   message?: string;
-  activation?: {
-    username?: string;
-    sessionExpiry?: string;
-  };
+  activation?: PaymentActivationData;
   isGift?: boolean;
   recipientUsername?: string;
   [key: string]: unknown;
 };
+
+type PaymentStatus = 'PROCESSING' | 'SUCCESSFUL' | 'FAILED' | 'EXPIRED' | 'ACTIVATED' | 'ACTIVATION_FAILED' | 'ACTIVATION_ERROR' | null;
 
 interface PaymentStatusMonitorProps {
   transactionId: string;
@@ -24,10 +31,7 @@ interface PaymentStatusMonitorProps {
   onPaymentSuccess?: (data: PaymentData) => void;
   onPaymentFailed?: (error: string) => void;
   onRedirect?: () => void;
-  onCancel?: () => void;
   routerIdentity?: string;
-  pollInterval?: number;
-  maxAttempts?: number;
 }
 
 export function PaymentStatusMonitor({
@@ -39,161 +43,133 @@ export function PaymentStatusMonitor({
   onPaymentSuccess,
   onPaymentFailed,
   onRedirect,
-  onCancel,
   routerIdentity,
-  pollInterval = 3000,
-  maxAttempts = 40,
 }: PaymentStatusMonitorProps) {
-  const [status, setStatus] = useState<'CHECKING' | 'SUCCESSFUL' | 'FAILED' | null>(null);
-  const [isCancelled, setIsCancelled] = useState(false);
+  const { socket, isConnected, joinPaymentRoom, leavePaymentRoom } = useSocket();
+  const [status, setStatus] = useState<PaymentStatus>('PROCESSING');
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [countdown, setCountdown] = useState(5);
-  const [attemptCount, setAttemptCount] = useState(0);
+  const [countdown, setCountdown] = useState(3);
 
-  // Main polling effect
+  // Join payment room and listen for updates
   useEffect(() => {
-    if (status !== null || attemptCount >= maxAttempts || isCancelled) {
-      return; 
-    }
+    if (!transactionId || !socket || !isConnected) return;
 
-    const pollPaymentStatus = async () => {
-      try {
-        const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com'}/payments/status/${transactionId}`;
-        console.log(`🔄 [Poll ${attemptCount + 1}/${maxAttempts}]`, apiUrl);
+    console.log(`🔌 Joining payment room for transaction: ${transactionId}`);
+    joinPaymentRoom(transactionId);
 
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-          throw new Error(`API error: ${response.statusText}`);
-        }
+    const handlePaymentStatusUpdate = (data: {
+      status?: string;
+      message?: string;
+      data?: PaymentData;
+    }) => {
+      console.log('📡 Real-time payment status update:', data);
 
-        const data = (await response.json()) as PaymentData;
-        console.log('📊 Payment response:', data);
+      const { status: newStatus, message, data: eventData } = data;
+      const activationPayload =
+        (eventData?.activation || eventData?.activationDetails || eventData || {}) as PaymentActivationData;
 
-        const statusUpper = (data.status || '').toUpperCase();
-
-        if (statusUpper === 'SUCCESSFUL') {
-          console.log('✅ SUCCESSFUL:', data);
-          setPaymentData(data);
+      switch (newStatus) {
+        case 'SUCCESSFUL':
           setStatus('SUCCESSFUL');
+          setPaymentData(eventData || {});
+          break;
 
-          // Store data
-          if (data.activation?.username) {
-            localStorage.setItem('wifiSessionUsername', data.activation.username);
+        case 'FAILED':
+          setStatus('FAILED');
+          setErrorMessage(message || 'Payment failed');
+          onPaymentFailed?.(message || 'Payment failed');
+          break;
+
+        case 'EXPIRED':
+          setStatus('EXPIRED');
+          setErrorMessage('Payment request expired');
+          onPaymentFailed?.('Payment expired');
+          break;
+
+        case 'ACTIVATED':
+          setStatus('ACTIVATED');
+          setPaymentData(prev => ({ ...prev, activation: activationPayload }));
+          // Store activation data
+          if (activationPayload?.username) {
+            localStorage.setItem('wifiSessionUsername', activationPayload.username);
           }
-          if (data.activation?.sessionExpiry) {
+          if (activationPayload?.password) {
+            localStorage.setItem('wifiSessionPassword', activationPayload.password);
+          }
+          if (activationPayload?.sessionExpiry) {
             const hours = Math.round(
-              (new Date(data.activation.sessionExpiry).getTime() - new Date().getTime()) / (1000 * 60 * 60)
+              (new Date(activationPayload.sessionExpiry).getTime() - new Date().getTime()) / (1000 * 60 * 60)
             );
             localStorage.setItem('wifiSessionDuration', `${hours} hours`);
           }
-          if (data.isGift) {
-            localStorage.setItem('wifiPaymentIsGift', 'true');
-          }
-          if (data.recipientUsername) {
-            localStorage.setItem('wifiPaymentRecipientUsername', data.recipientUsername);
-          }
+          onPaymentSuccess?.({ ...eventData, activation: activationPayload });
+          break;
 
-          onPaymentSuccess?.(data);
-          return;
-        }
+        case 'ACTIVATION_FAILED':
+          setStatus('ACTIVATION_FAILED');
+          setErrorMessage(message || 'Activation failed');
+          onPaymentFailed?.(message || 'Activation failed');
+          break;
 
-        if (statusUpper === 'FAILED') {
-          console.log('❌ FAILED');
-          const message = data.message?.toString().trim() || 'Payment declined';
-          setStatus('FAILED');
-          setErrorMessage(message);
-          onPaymentFailed?.(message);
-          return;
-        }
+        case 'ACTIVATION_ERROR':
+          setStatus('ACTIVATION_ERROR');
+          setErrorMessage(message || 'Activation error');
+          onPaymentFailed?.(message || 'Activation error');
+          break;
 
-        if (statusUpper === 'EXPIRED') {
-          const message = 'Payment request expired. Please try again.';
-          setStatus('FAILED');
-          setErrorMessage(message);
-          onPaymentFailed?.('Payment expired');
-          return;
-        }
-
-        // Still pending
-        console.log(`⏳ Still pending, retry...`);
-        setAttemptCount(prev => prev + 1);
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : typeof error === 'string'
-            ? error
-            : error !== null && typeof error === 'object'
-            ? JSON.stringify(error)
-            : 'Unknown error';
-
-        console.error('❌ Error:', message);
-
-        if (attemptCount + 1 >= maxAttempts) {
-          const timeoutMessage = `Payment status polling failed: ${message}`;
-          setStatus('FAILED');
-          setErrorMessage(timeoutMessage);
-          onPaymentFailed?.(timeoutMessage);
-        } else {
-          setAttemptCount(prev => prev + 1);
-        }
+        default:
+          console.log(`ℹ️ Unknown status update: ${newStatus}`);
       }
     };
 
-    const timer = setTimeout(pollPaymentStatus, attemptCount === 0 ? 0 : pollInterval);
-    return () => clearTimeout(timer);
-  }, [status, attemptCount, maxAttempts, transactionId, pollInterval, onPaymentSuccess, onPaymentFailed]);
+    socket.on('payment-status-update', handlePaymentStatusUpdate);
+
+    // Cleanup
+    return () => {
+      socket.off('payment-status-update', handlePaymentStatusUpdate);
+      leavePaymentRoom(transactionId);
+    };
+  }, [transactionId, socket, isConnected, joinPaymentRoom, leavePaymentRoom, onPaymentSuccess, onPaymentFailed]);
 
   const redirectToMikroTikLogin = useCallback(() => {
     const activeRouter =
-      (paymentData?.activation as any)?.activeRouter || routerIdentity || 'Home';
-    const routerKey = activeRouter.toString().toLowerCase();
-    const url = routerKey.includes('school') || routerKey.includes('com')
-      ? 'http://com.org/login'
-      : 'http://tata.org/login';
+      paymentData?.activation?.activeRouter || routerIdentity || 'Home';
 
-    console.log('🔄 Redirecting to:', url, 'for router hint:', activeRouter);
-    window.location.href = url;
-    setTimeout(() => onRedirect?.(), 100);
-  }, [onRedirect, paymentData?.activation, routerIdentity]);
+    // Store router info for login
+    localStorage.setItem('wifiRouterIdentity', activeRouter);
 
-  // Countdown effect
+    // Redirect to MikroTik login page
+    window.location.href = `http://tata.org/login?username=${encodeURIComponent(
+      paymentData?.activation?.username || localStorage.getItem('wifiSessionUsername') || ''
+    )}&password=${encodeURIComponent(
+      paymentData?.activation?.password || localStorage.getItem('wifiSessionPassword') || ''
+    )}`;
+  }, [paymentData, routerIdentity]);
+
   useEffect(() => {
-    if (status !== 'SUCCESSFUL') {
+    if (status !== 'ACTIVATED' || variant === 'gift') {
+      setCountdown(3);
       return;
     }
 
-    if (variant === 'gift') {
-      console.log('🎁 Gift payment - staying on page');
-      return;
-    }
-
-    console.log('🌐 Starting countdown...');
-    let countdownValue = 5;
-
-    const timer = setInterval(() => {
-      countdownValue--;
-      setCountdown(countdownValue);
-
-      if (countdownValue <= 0) {
-        clearInterval(timer);
-        redirectToMikroTikLogin();
-      }
+    setCountdown(3);
+    const interval = setInterval(() => {
+      setCountdown((prev) => Math.max(prev - 1, 0));
     }, 1000);
 
-    return () => clearInterval(timer);
+    const redirectTimer = setTimeout(() => {
+      redirectToMikroTikLogin();
+    }, 3000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(redirectTimer);
+    };
   }, [status, variant, redirectToMikroTikLogin]);
 
-  // CHECKING STATE
-  if (status === null) {
-    const handleCancel = () => {
-      if (isCancelled) return;
-      setIsCancelled(true);
-      console.log('🛑 Payment monitoring cancelled by user');
-      onCancel?.();
-    };
-
+  // PROCESSING STATE (immediate after payment initiation)
+  if (status === 'PROCESSING') {
     return (
       <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
@@ -204,29 +180,56 @@ export function PaymentStatusMonitor({
             <h2 className="text-3xl font-bold text-white">Processing Payment</h2>
           </div>
           <div className="p-8 text-center">
-            <p className="text-gray-600 mb-4">Verifying with Fapshi...</p>
-            <p className="text-sm text-gray-500 mb-6">Attempt {attemptCount + 1} of {maxAttempts}</p>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="inline-flex items-center justify-center px-5 py-3 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              Cancel payment
-            </button>
+            <p className="text-gray-600 mb-4">Waiting for payment confirmation...</p>
+            <p className="text-sm text-gray-500 mb-6">Complete payment on your mobile device</p>
+            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // SUCCESS STATE
+  // ACTIVATION IN PROGRESS STATE
   if (status === 'SUCCESSFUL') {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+          <div className="bg-gradient-to-r from-yellow-500 to-orange-600 px-8 py-10 text-center">
+            <div className="bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+              <Loader2 size={48} className="text-white animate-spin" />
+            </div>
+            <h2 className="text-3xl font-bold text-white">Activating Access</h2>
+          </div>
+          <div className="p-8 text-center">
+            <p className="text-gray-600 mb-4">Payment confirmed! Setting up your connection...</p>
+            <p className="text-sm text-gray-500 mb-6">This may take a few moments</p>
+            <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ACTIVATED SUCCESS STATE
+  if (status === 'ACTIVATED') {
     const username = paymentData?.activation?.username || localStorage.getItem('wifiSessionUsername') || 'Account';
     const duration = planDuration ? `${planDuration} hours` : localStorage.getItem('wifiSessionDuration') || '2 hours';
     const isGift = variant === 'gift';
     const displayUsername = isGift ? (recipientUsername || username) : username;
     const displayLabel = isGift ? 'Recipient Username' : 'Username';
-    const displayPassword = isGift ? (recipientPassword || localStorage.getItem('wifiSessionPassword') || 'Generated') : null;
+    const displayPassword =
+      paymentData?.activation?.password ||
+      recipientPassword ||
+      localStorage.getItem('wifiSessionPassword') ||
+      'Not available';
 
     return (
       <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
@@ -249,6 +252,11 @@ export function PaymentStatusMonitor({
               <p className="text-gray-600 text-sm">
                 {isGift ? 'They can now log in and connect' : 'Ready to connect'}
               </p>
+              {!isGift && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Please type your username and password exactly as shown to log in successfully.
+                </p>
+              )}
             </div>
 
             {/* Details */}
@@ -267,17 +275,13 @@ export function PaymentStatusMonitor({
                     {duration}
                   </span>
                 </div>
-                {isGift && (
-                  <>
-                    <div className="h-px bg-blue-200" />
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-700 font-medium">Password</span>
-                      <span className="font-bold text-gray-900 bg-white px-4 py-2 rounded-lg text-sm font-mono">
-                        {displayPassword}
-                      </span>
-                    </div>
-                  </>
-                )}
+                <div className="h-px bg-blue-200" />
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 font-medium">Password</span>
+                  <span className="font-bold text-gray-900 bg-white px-4 py-2 rounded-lg text-sm font-mono">
+                    {displayPassword}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -292,12 +296,12 @@ export function PaymentStatusMonitor({
                 </p>
               </div>
             ) : (
-              <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-5 text-center">
-                <p className="text-amber-900 font-semibold mb-1">
-                  ⏱️ Redirecting to login in <span className="text-2xl font-bold">{countdown}s</span>
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-5 text-center">
+                <p className="text-blue-900 font-semibold mb-1">
+                  ✅ Redirecting to login in {countdown}s
                 </p>
-                <p className="text-xs text-amber-700">
-                  If you are not redirected automatically, please click the button below.
+                <p className="text-xs text-blue-700">
+                  Please connect to the hotspot network and enter your credentials on the Tata login page.
                 </p>
               </div>
             )}
@@ -317,7 +321,7 @@ export function PaymentStatusMonitor({
   }
 
   // FAILED STATE
-  if (status === 'FAILED') {
+  if (status === 'FAILED' || status === 'EXPIRED' || status === 'ACTIVATION_FAILED' || status === 'ACTIVATION_ERROR') {
     return (
       <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">

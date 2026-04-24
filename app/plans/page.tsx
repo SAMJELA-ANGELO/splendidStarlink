@@ -171,6 +171,7 @@ export default function PlansPage() {
                   <p>• <strong>Transaction Locks:</strong> Only one pending payment allowed at a time</p>
                   <p>• <strong>Device Restrictions:</strong> One account per device (except gift purchases)</p>
                   <p>• <strong>Phone Verification:</strong> Payments require valid phone number verification</p>
+                  <p>• <strong>Blacklist Protection:</strong> We block repeat abuse from the same device, phone number, or IP so the service stays fair and available for everyone.</p>
                 </div>
               </div>
             </div>

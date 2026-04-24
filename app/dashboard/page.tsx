@@ -965,6 +965,17 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-blue-900 space-y-2">
+                    <p className="font-semibold">Blacklist Protection</p>
+                    <p>We block repeat abuse from the same device, phone number, or IP address so the service stays fair and available for everyone.</p>
+                    <p>This helps prevent duplicate or suspicious purchase attempts and keeps your plans working smoothly.</p>
+                  </div>
+                </div>
+              </div>
+
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-amber-700" />
