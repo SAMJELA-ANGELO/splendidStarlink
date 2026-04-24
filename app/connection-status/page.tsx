@@ -181,6 +181,15 @@ export default function ConnectionStatusPage() {
                   </div>
                 </div>
 
+                {/* Login to WiFi Button */}
+                <button
+                  onClick={() => window.open('https://tata.org/login', '_blank')}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition mb-8"
+                >
+                  <Wifi className="h-5 w-5 inline mr-2" />
+                  Login to WiFi
+                </button>
+
                 {/* Instructions */}
                 <div className="bg-amber-50 rounded-lg p-6 mb-8 border border-amber-200">
                   <h3 className="text-lg font-semibold text-amber-900 mb-3">📱 You're All Set!</h3>

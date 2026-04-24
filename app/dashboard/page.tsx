@@ -1414,13 +1414,24 @@ export default function DashboardPage() {
                       ) : (
                         <button
                           onClick={async () => {
+                            if (!user?.username) {
+                              addToast('Unable to recover password: missing user information', 'error');
+                              return;
+                            }
+
                             try {
                               setPasswordLoading(true);
-                              const response = await apiFetchPost<{ password: string }>('/auth/recover-password');
-                              setRecoveredPassword(response.password);
+                              const response = await apiFetchPost('/auth/recover-password', {
+                                username: user.username,
+                              });
+                              const password = response?.data?.currentPassword || response?.currentPassword || response?.password;
+                              if (!password) {
+                                throw new Error('Unable to retrieve recovered password.');
+                              }
+                              setRecoveredPassword(password);
                               addToast('Password recovered successfully', 'success');
-                            } catch (error) {
-                              addToast('Failed to recover password', 'error');
+                            } catch (error: any) {
+                              addToast(error?.message || 'Failed to recover password', 'error');
                             } finally {
                               setPasswordLoading(false);
                             }

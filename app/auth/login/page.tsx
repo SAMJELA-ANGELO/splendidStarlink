@@ -139,10 +139,14 @@ export default function LoginPage() {
     setRecoveredPassword(null);
 
     try {
-      const response = await apiFetchPost<{ password: string }>('/auth/recover-password', {
-        username: forgotPasswordUsername
+      const response = await apiFetchPost('/auth/recover-password', {
+        username: forgotPasswordUsername,
       });
-      setRecoveredPassword(response.password);
+      const password = response?.data?.currentPassword || response?.currentPassword || response?.password;
+      if (!password) {
+        throw new Error('Unable to retrieve recovered password.');
+      }
+      setRecoveredPassword(password);
     } catch (err: any) {
       setForgotPasswordError(err.message || "Failed to recover password. Please try again.");
     } finally {
