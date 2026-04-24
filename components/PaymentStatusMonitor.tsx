@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, LogIn } from 'lucide-react';
 import { useSocket } from '@/contexts/SocketContext';
+import { apiFetchGet } from '@/lib/api-client';
 
 type PaymentActivationData = {
   username?: string;
@@ -45,15 +46,20 @@ export function PaymentStatusMonitor({
   onRedirect,
   routerIdentity,
 }: PaymentStatusMonitorProps) {
-  const { socket, isConnected, joinPaymentRoom, leavePaymentRoom } = useSocket();
+  const { socket, isConnected, connectionError, joinPaymentRoom, leavePaymentRoom } = useSocket();
   const [status, setStatus] = useState<PaymentStatus>('PROCESSING');
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [countdown, setCountdown] = useState(3);
+  const [pollingEnabled, setPollingEnabled] = useState(false);
+  const [pollingError, setPollingError] = useState<string | null>(null);
 
   // Join payment room and listen for updates
   useEffect(() => {
     if (!transactionId || !socket || !isConnected) return;
+
+    setPollingEnabled(false);
+    setPollingError(null);
 
     console.log(`🔌 Joining payment room for transaction: ${transactionId}`);
     joinPaymentRoom(transactionId);
@@ -132,6 +138,86 @@ export function PaymentStatusMonitor({
     };
   }, [transactionId, socket, isConnected, joinPaymentRoom, leavePaymentRoom, onPaymentSuccess, onPaymentFailed]);
 
+  useEffect(() => {
+    if (!transactionId) return;
+
+    // If connection error occurred, start polling immediately
+    if (connectionError) {
+      console.log('🔌 WebSocket connection error detected, enabling polling immediately');
+      setPollingEnabled(true);
+      return;
+    }
+
+    // If connected, disable polling
+    if (isConnected) {
+      setPollingEnabled(false);
+      setPollingError(null);
+      return;
+    }
+
+    // Otherwise wait 3 seconds to give websocket time to connect
+    const timeoutId = setTimeout(() => {
+      setPollingEnabled(!isConnected);
+    }, 3000);
+
+    return () => clearTimeout(timeoutId);
+  }, [transactionId, isConnected, connectionError]);
+
+  useEffect(() => {
+    if (!transactionId || status !== 'PROCESSING' || !pollingEnabled) return;
+
+    let isCancelled = false;
+
+    const fetchPaymentStatus = async () => {
+      try {
+        const result = await apiFetchGet<PaymentData>(`/payments/status/${transactionId}`);
+        if (isCancelled) return;
+
+        const currentStatus = result.status?.toString?.().toUpperCase?.();
+        const activationPayload =
+          (result.activation || result.activationDetails || result) as PaymentActivationData;
+
+        switch (currentStatus) {
+          case 'SUCCESSFUL':
+            setStatus('SUCCESSFUL');
+            setPaymentData(result || {});
+            break;
+          case 'FAILED':
+            setStatus('FAILED');
+            setErrorMessage(result.message || 'Payment failed');
+            onPaymentFailed?.(result.message || 'Payment failed');
+            break;
+          case 'EXPIRED':
+            setStatus('EXPIRED');
+            setErrorMessage('Payment request expired');
+            onPaymentFailed?.('Payment expired');
+            break;
+          case 'ACTIVATED':
+            setStatus('ACTIVATED');
+            setPaymentData((prev) => ({ ...prev, activation: activationPayload }));
+            onPaymentSuccess?.({ ...result, activation: activationPayload });
+            break;
+          default:
+            break;
+        }
+
+        setPollingError(null);
+      } catch (pollError: any) {
+        console.error('Polling payment status failed:', pollError);
+        setPollingError(
+          pollError?.message || 'Unable to fetch payment status. Retrying...'
+        );
+      }
+    };
+
+    fetchPaymentStatus();
+    const interval = window.setInterval(fetchPaymentStatus, 5000);
+    return () => {
+      isCancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [transactionId, status, pollingEnabled, onPaymentFailed, onPaymentSuccess]);
+
   const redirectToMikroTikLogin = useCallback(() => {
     const activeRouter =
       paymentData?.activation?.activeRouter || routerIdentity || 'Home';
@@ -181,7 +267,14 @@ export function PaymentStatusMonitor({
           </div>
           <div className="p-8 text-center">
             <p className="text-gray-600 mb-4">Waiting for payment confirmation...</p>
-            <p className="text-sm text-gray-500 mb-6">Complete payment on your mobile device</p>
+            <p className="text-sm text-gray-500 mb-6">
+              {pollingEnabled
+                ? 'Realtime updates unavailable. Checking payment status every few seconds...'
+                : 'Complete payment on your mobile device'}
+            </p>
+            {pollingError && (
+              <p className="text-sm text-red-500 mb-4">{pollingError}</p>
+            )}
             <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>

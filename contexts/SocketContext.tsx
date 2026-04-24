@@ -6,6 +6,7 @@ import { io, Socket } from 'socket.io-client';
 interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
+  connectionError: Error | null;
   joinPaymentRoom: (transactionId: string) => void;
   leavePaymentRoom: (transactionId: string) => void;
 }
@@ -18,6 +19,7 @@ interface SocketProviderProps {
 
 export function SocketProvider({ children }: SocketProviderProps) {
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<Error | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socket.on('connect', () => {
       console.log('🔌 Connected to payment WebSocket');
       setIsConnected(true);
+      setConnectionError(null);
     });
 
     socket.on('disconnect', () => {
@@ -45,6 +48,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socket.on('connect_error', (error) => {
       console.error('🔌 WebSocket connection error:', error);
       setIsConnected(false);
+      setConnectionError(error instanceof Error ? error : new Error(String(error)));
     });
 
     // Cleanup on unmount
@@ -68,6 +72,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const value: SocketContextType = {
     socket: socketRef.current,
     isConnected,
+    connectionError,
     joinPaymentRoom,
     leavePaymentRoom,
   };
