@@ -23,6 +23,15 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
+    // Check if polling is forced via environment variable
+    const forcePolling = process.env.NEXT_PUBLIC_FORCE_POLLING === 'true';
+    if (forcePolling) {
+      console.log('🔌 Polling forced via environment variable, skipping websocket initialization');
+      setIsConnected(false);
+      setConnectionError(new Error('Polling forced'));
+      return;
+    }
+
     // Initialize socket connection
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://splendid-starlink.onrender.com';
     const socketUrl = apiUrl.replace(/^http/, 'ws'); // Convert http to ws
